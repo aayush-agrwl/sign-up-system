@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Research Participant Booking</title>
+    <link rel="stylesheet" href="/styles.css">
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="/">Participant Booking</a>
+      <nav aria-label="Main navigation">
+        <a href="#study">Study background</a>
+        <a href="#screening">Check eligibility</a>
+        <a href="/admin.html">Admin</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero" aria-labelledby="page-title">
+        <div>
+          <p class="eyebrow">University research study</p>
+          <h1 id="page-title">Book a research session in a few minutes.</h1>
+          <p class="hero-copy">
+            This simple booking system helps interested students check eligibility, pick an available appointment, and reserve a study session.
+          </p>
+          <a class="button primary" href="#screening">Start screening</a>
+        </div>
+      </section>
+
+      <section id="study" class="content-section">
+        <div class="section-heading">
+          <p class="eyebrow">Study background</p>
+          <h2>About the study</h2>
+        </div>
+        <div class="info-grid">
+          <article>
+            <h3>Purpose</h3>
+            <p>Researchers are learning how students make decisions when scheduling academic and study-related activities.</p>
+          </article>
+          <article>
+            <h3>What happens</h3>
+            <p>Eligible participants choose a time slot, attend one session, and complete a short guided activity with the research team.</p>
+          </article>
+          <article>
+            <h3>Who can join</h3>
+            <p>Participants must be 18-26 years old and currently enrolled in an educational institution.</p>
+          </article>
+        </div>
+      </section>
+
+      <section id="screening" class="booking-shell" aria-labelledby="screening-title">
+        <div class="section-heading">
+          <p class="eyebrow">Participant form</p>
+          <h2 id="screening-title">Check eligibility and book</h2>
+          <p>
+            Complete the short prescreening questionnaire below. Eligible participants will be shown available appointment slots after submitting this form.
+          </p>
+        </div>
+
+        <form id="screening-form" class="form-panel">
+          <section class="question-section">
+            <h3>Contact details</h3>
+            <div class="form-grid">
+              <label>
+                Full name
+                <input name="name" type="text" autocomplete="name" required placeholder="Avery Johnson">
+              </label>
+              <label>
+                Phone number
+                <input name="phone" type="tel" autocomplete="tel" inputmode="tel" required placeholder="+91 98765 43210">
+              </label>
+              <label>
+                Email
+                <input name="email" type="email" autocomplete="email" required placeholder="avery@example.edu">
+              </label>
+            </div>
+          </section>
+
+          <section class="question-section">
+            <h3>Eligibility</h3>
+            <div class="form-grid">
+              <label>
+                Age
+                <input name="age" type="number" min="1" max="120" inputmode="numeric" required placeholder="21">
+              </label>
+              <label>
+                Are you enrolled in an educational institution?
+                <select name="enrolled" required>
+                  <option value="">Choose one</option>
+                  <option value="true">Yes, I am enrolled</option>
+                  <option value="false">No, I am not enrolled</option>
+                </select>
+              </label>
+              <label class="wide-field">
+                Institution name
+                <input name="institution_name" type="text" autocomplete="organization" required placeholder="College or university name">
+              </label>
+            </div>
+          </section>
+
+          <div id="questionnaire-sections"></div>
+
+          <button class="button primary" type="submit">Check available slots</button>
+        </form>
+
+        <template id="select-question-template">
+          <label>
+            <span class="question-label"></span>
+            <select required></select>
+          </label>
+        </template>
+
+        <template id="text-question-template">
+          <label>
+            <span class="question-label"></span>
+            <input type="text">
+          </label>
+        </template>
+
+        <div id="eligibility-message" class="message" hidden></div>
+
+        <form id="booking-form" class="form-panel slots-panel" hidden>
+          <h3>Available appointment slots</h3>
+          <div id="slots-list" class="slots-list"></div>
+          <button class="button primary" type="submit">Submit booking</button>
+        </form>
+      </section>
+    </main>
+  </body>
+</html>

@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Admin Dashboard | Participant Booking</title>
+    <link rel="stylesheet" href="/styles.css">
+    <script src="/admin.js" defer></script>
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="/">Participant Booking</a>
+      <nav aria-label="Main navigation">
+        <a href="/">Booking page</a>
+        <a href="/admin.html" aria-current="page">Admin</a>
+      </nav>
+    </header>
+
+    <main class="admin-main">
+      <section class="dashboard-header">
+        <div>
+          <p class="eyebrow">Admin dashboard</p>
+          <h1>Research session overview</h1>
+          <p>Review participant bookings, signups per appointment slot, and attendance status.</p>
+        </div>
+        <div class="dashboard-actions">
+          <button id="download-csv-button" class="button primary" type="button">Download CSV</button>
+          <button id="refresh-button" class="button secondary" type="button">Refresh</button>
+          <button id="logout-button" class="button secondary" type="button">Log out</button>
+        </div>
+      </section>
+
+      <section class="metrics-grid" aria-label="Signup summary">
+        <article>
+          <span id="total-participants">0</span>
+          <p>Total participants</p>
+        </article>
+        <article>
+          <span id="total-attended">0</span>
+          <p>Marked attended</p>
+        </article>
+        <article>
+          <span id="total-pending">0</span>
+          <p>Pending attendance</p>
+        </article>
+      </section>
+
+      <section class="dashboard-grid">
+        <div class="table-panel">
+          <div class="panel-heading">
+            <h2>Participant list</h2>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Phone</th>
+                  <th>Email</th>
+                  <th>Age</th>
+                  <th>Slot</th>
+                  <th>Responses</th>
+                  <th>Attendance</th>
+                </tr>
+              </thead>
+              <tbody id="participant-table"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <aside class="table-panel">
+          <div class="panel-heading">
+            <h2>Signups per slot</h2>
+          </div>
+          <div id="slot-summary" class="slot-summary"></div>
+        </aside>
+      </section>
+    </main>
+  </body>
+</html>
