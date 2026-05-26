@@ -5,6 +5,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Research Participant Booking | CSBC, Ashoka University</title>
     <link rel="stylesheet" href="/styles.css">
+    <style>
+      .slot-meta {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .slot-meta small {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+    </style>
     <script src="/app.js" defer></script>
   </head>
   <body>
@@ -73,8 +85,8 @@
                 Phone number
                 <input name="phone" type="tel" autocomplete="tel" inputmode="tel" required placeholder="+91 98765 43210">
               </label>
-              <label>
-                Email
+              <label class="wide-field">
+                Email address
                 <input name="email" type="email" autocomplete="email" required placeholder="avery@example.edu">
               </label>
             </div>
@@ -87,14 +99,19 @@
                 Age
                 <input name="age" type="number" min="1" max="120" inputmode="numeric" required placeholder="21">
               </label>
-              <label>
-                Are you enrolled in an educational institution?
-                <select name="enrolled" required>
-                  <option value="">Choose one</option>
-                  <option value="true">Yes, I am enrolled</option>
-                  <option value="false">No, I am not enrolled</option>
-                </select>
-              </label>
+              <div class="wide-field">
+                <span class="field-label">Are you currently enrolled in an educational institution?</span>
+                <div class="choice-group" role="group">
+                  <label class="choice-card">
+                    <input type="radio" name="enrolled" value="true" required>
+                    <span>Yes, I am enrolled</span>
+                  </label>
+                  <label class="choice-card">
+                    <input type="radio" name="enrolled" value="false">
+                    <span>No, I am not enrolled</span>
+                  </label>
+                </div>
+              </div>
               <label class="wide-field">
                 Institution name
                 <input name="institution_name" type="text" autocomplete="organization" required placeholder="College or university name">
@@ -104,22 +121,8 @@
 
           <div id="questionnaire-sections"></div>
 
-          <button class="button primary" type="submit">Check available slots</button>
+          <button class="button primary" type="submit" style="margin-top: 6px;">Check available slots</button>
         </form>
-
-        <template id="select-question-template">
-          <label>
-            <span class="question-label"></span>
-            <select required></select>
-          </label>
-        </template>
-
-        <template id="text-question-template">
-          <label>
-            <span class="question-label"></span>
-            <input type="text">
-          </label>
-        </template>
 
         <div id="eligibility-message" class="message" hidden></div>
 
