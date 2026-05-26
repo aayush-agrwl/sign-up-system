@@ -3,16 +3,18 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Research Participant Booking</title>
+    <title>Research Participant Booking | CSBC, Ashoka University</title>
     <link rel="stylesheet" href="/styles.css">
     <script src="/app.js" defer></script>
   </head>
   <body>
     <header class="site-header">
-      <a class="brand" href="/">Participant Booking</a>
+      <a class="brand" href="/">
+        <img src="/logo.png" alt="Centre for Social and Behaviour Change, Ashoka University">
+      </a>
       <nav aria-label="Main navigation">
-        <a href="#study">Study background</a>
-        <a href="#screening">Check eligibility</a>
+        <a href="#study">About the study</a>
+        <a href="#screening">Sign up</a>
         <a href="/admin.html">Admin</a>
       </nav>
     </header>
@@ -20,12 +22,12 @@
     <main>
       <section class="hero" aria-labelledby="page-title">
         <div>
-          <p class="eyebrow">University research study</p>
-          <h1 id="page-title">Book a research session in a few minutes.</h1>
+          <p class="eyebrow">Research study &mdash; CSBC, Ashoka University</p>
+          <h1 id="page-title">Sign up for a research session.</h1>
           <p class="hero-copy">
-            This simple booking system helps interested students check eligibility, pick an available appointment, and reserve a study session.
+            CSBC is recruiting participants for an ongoing study on decision-making and behaviour. Check your eligibility, pick a session time that works for you, and confirm your spot in minutes.
           </p>
-          <a class="button primary" href="#screening">Start screening</a>
+          <a class="button primary" href="#screening">Check eligibility</a>
         </div>
       </section>
 
@@ -37,15 +39,15 @@
         <div class="info-grid">
           <article>
             <h3>Purpose</h3>
-            <p>Researchers are learning how students make decisions when scheduling academic and study-related activities.</p>
+            <p>CSBC studies how social context and environment shape the decisions people make. This study examines decision-making and behavioural patterns among young adults in India.</p>
           </article>
           <article>
             <h3>What happens</h3>
-            <p>Eligible participants choose a time slot, attend one session, and complete a short guided activity with the research team.</p>
+            <p>Eligible participants attend one session on the Ashoka University campus and complete a short guided activity with the CSBC research team. Sessions typically last 45&ndash;60 minutes.</p>
           </article>
           <article>
             <h3>Who can join</h3>
-            <p>Participants must be 18-26 years old and currently enrolled in an educational institution.</p>
+            <p>The study is open to students aged 18&ndash;26 who are currently enrolled in a college or university. Participants will be screened for eligibility before a slot is confirmed.</p>
           </article>
         </div>
       </section>
@@ -55,7 +57,7 @@
           <p class="eyebrow">Participant form</p>
           <h2 id="screening-title">Check eligibility and book</h2>
           <p>
-            Complete the short prescreening questionnaire below. Eligible participants will be shown available appointment slots after submitting this form.
+            Complete the short prescreening form below. If you are eligible, available session slots will appear for you to choose from.
           </p>
         </div>
 
@@ -122,9 +124,9 @@
         <div id="eligibility-message" class="message" hidden></div>
 
         <form id="booking-form" class="form-panel slots-panel" hidden>
-          <h3>Available appointment slots</h3>
+          <h3>Available session slots</h3>
           <div id="slots-list" class="slots-list"></div>
-          <button class="button primary" type="submit">Submit booking</button>
+          <button class="button primary" type="submit">Confirm booking</button>
         </form>
       </section>
     </main>
