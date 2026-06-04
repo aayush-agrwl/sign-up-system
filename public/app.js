@@ -107,7 +107,7 @@ const questionnaire = [
         label: "Where do you live?",
         type: "select",
         required: true,
-        choices: ["Urban", "Rural"],
+        choices: ["Urban area", "Rural area"],
       },
       {
         name: "caste",
