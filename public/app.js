@@ -332,6 +332,12 @@ screeningForm.addEventListener("submit", async (event) => {
     responses: collectQuestionResponses(formData),
   };
 
+  if (!/^[0-9]{10}$/.test(currentParticipant.phone)) {
+    setButtonLoading(submitBtn, false);
+    showMessage("Please enter a valid 10-digit mobile number.", "warning");
+    return;
+  }
+
   if (age < 18 || age > 35 || !enrolled) {
     setButtonLoading(submitBtn, false);
     showMessage("Thank you for your interest. This study is only open to enrolled students aged 18–26.", "warning");
