@@ -1,55 +1,147 @@
 import { randomBytes, timingSafeEqual } from "node:crypto";
+import { neon } from "@neondatabase/serverless";
 
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 
 // ---------------------------------------------------------------------------
-// In-memory state
-// Global variables persist across requests within a warm serverless instance.
-// Data resets on cold starts — suitable for testing.
+// Sessions — in-memory only (admins simply re-login after a cold start)
 // ---------------------------------------------------------------------------
-if (!global.__bookingState) {
-  global.__bookingState = {
-    sessions: new Set(),
-    participants: [],
-    nextId: 1,
-    nextSlotId: 1,
-    slots: [],
-  };
+if (!global.__adminSessions) global.__adminSessions = new Set();
+const sessions = global.__adminSessions;
+
+// Schema is created once per warm instance then cached
+if (global.__schemaReady === undefined) global.__schemaReady = false;
+
+// ---------------------------------------------------------------------------
+// Database
+// ---------------------------------------------------------------------------
+function getDb() {
+  return neon(process.env.DATABASE_URL);
 }
 
-const state = global.__bookingState;
+async function ensureSchema(sql) {
+  if (global.__schemaReady) return;
 
-// Backfill nextSlotId for existing warm instances
-if (!state.nextSlotId) {
-  state.nextSlotId = state.slots.length
-    ? Math.max(...state.slots.map((s) => s.id)) + 1
-    : 1;
+  await sql`
+    CREATE TABLE IF NOT EXISTS slots (
+      id       SERIAL  PRIMARY KEY,
+      label    TEXT    NOT NULL,
+      capacity INTEGER NOT NULL DEFAULT 4
+    )
+  `;
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS participants (
+      id             SERIAL       PRIMARY KEY,
+      name           TEXT         NOT NULL,
+      phone          TEXT         NOT NULL DEFAULT '',
+      email          TEXT         NOT NULL,
+      age            INTEGER      NOT NULL,
+      enrolled       BOOLEAN      NOT NULL,
+      responses_json TEXT         NOT NULL DEFAULT '{}',
+      slot_id        INTEGER      NOT NULL REFERENCES slots(id),
+      attendance     TEXT         NOT NULL DEFAULT 'pending',
+      created_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+    )
+  `;
+
+  global.__schemaReady = true;
 }
 
+// ---------------------------------------------------------------------------
+// Data helpers
+// ---------------------------------------------------------------------------
 const visibleResponseKeys = new Set([
-  "institution_name",
-  "employment",
-  "field",
-  "education",
-  "gender",
-  "religion",
-  "state",
-  "live",
-  "caste",
-  "personal_comp",
+  "institution_name", "employment", "field", "education",
+  "gender", "religion", "state", "live", "caste", "personal_comp",
 ]);
 
+async function getSlots(sql, includeFull = false) {
+  const rows = await sql`
+    SELECT
+      s.id,
+      s.label,
+      s.capacity,
+      COUNT(p.id)::int                  AS signup_count,
+      (s.capacity - COUNT(p.id)::int)   AS remaining
+    FROM slots s
+    LEFT JOIN participants p ON p.slot_id = s.id
+    GROUP BY s.id
+    ORDER BY s.id
+  `;
+
+  const mapped = rows.map((r) => ({
+    id:          r.id,
+    label:       r.label,
+    capacity:    r.capacity,
+    signupCount: r.signup_count,
+    remaining:   r.remaining,
+  }));
+
+  return includeFull ? mapped : mapped.filter((s) => s.remaining > 0);
+}
+
+async function getParticipants(sql) {
+  const rows = await sql`
+    SELECT
+      p.id,
+      p.name,
+      p.phone,
+      p.email,
+      p.age,
+      p.enrolled,
+      p.responses_json,
+      p.attendance,
+      p.created_at,
+      s.label AS slot
+    FROM participants p
+    JOIN slots s ON s.id = p.slot_id
+    ORDER BY p.created_at DESC
+  `;
+
+  return rows.map((p) => {
+    const responses = JSON.parse(p.responses_json || "{}");
+    const visibleResponses = Object.fromEntries(
+      Object.entries(responses).filter(([key]) => visibleResponseKeys.has(key)),
+    );
+    return {
+      id:         p.id,
+      name:       p.name,
+      phone:      p.phone,
+      email:      p.email,
+      age:        p.age,
+      enrolled:   p.enrolled,
+      responses:  visibleResponses,
+      attendance: p.attendance,
+      createdAt:  p.created_at,
+      slot:       p.slot,
+    };
+  });
+}
+
 // ---------------------------------------------------------------------------
-// Helpers
+// Slot label builder
+// ---------------------------------------------------------------------------
+function buildSlotLabel(date, time, description) {
+  const [year, month, day] = date.split("-").map(Number);
+  const [hour, minute]     = time.split(":").map(Number);
+  const d = new Date(year, month - 1, day);
+  const DAYS   = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+  const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+  const h12    = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
+  const ampm   = hour < 12 ? "AM" : "PM";
+  const minStr = minute.toString().padStart(2, "0");
+  let label = `${DAYS[d.getDay()]}, ${MONTHS[month - 1]} ${day} at ${h12}:${minStr} ${ampm}`;
+  if (description?.trim()) label += ` · ${description.trim()}`;
+  return label;
+}
+
+// ---------------------------------------------------------------------------
+// HTTP helpers
 // ---------------------------------------------------------------------------
 function sendJson(res, statusCode, data) {
   res.writeHead(statusCode, { "Content-Type": "application/json; charset=utf-8" });
   res.end(JSON.stringify(data));
-}
-
-function sendRedirect(res, location) {
-  res.writeHead(302, { Location: location });
-  res.end();
 }
 
 function parseCookies(req) {
@@ -67,12 +159,12 @@ function parseCookies(req) {
 
 function isAdminAuthenticated(req) {
   const token = parseCookies(req).admin_session;
-  return Boolean(token && state.sessions.has(token));
+  return Boolean(token && sessions.has(token));
 }
 
 function passwordMatches(password) {
   if (!ADMIN_PASSWORD) return false;
-  const submitted = Buffer.from(String(password || ""));
+  const submitted  = Buffer.from(String(password || ""));
   const configured = Buffer.from(ADMIN_PASSWORD);
   if (submitted.length !== configured.length) return false;
   return timingSafeEqual(submitted, configured);
@@ -96,79 +188,34 @@ async function readJson(req) {
 }
 
 // ---------------------------------------------------------------------------
-// Slot label builder
-// ---------------------------------------------------------------------------
-function buildSlotLabel(date, time, description) {
-  // date: "YYYY-MM-DD", time: "HH:MM"
-  const [year, month, day] = date.split("-").map(Number);
-  const [hour, minute] = time.split(":").map(Number);
-  const d = new Date(year, month - 1, day);
-  const DAYS = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
-  const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
-  const h12 = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
-  const ampm = hour < 12 ? "AM" : "PM";
-  const minStr = minute.toString().padStart(2, "0");
-  let label = `${DAYS[d.getDay()]}, ${MONTHS[month - 1]} ${day} at ${h12}:${minStr} ${ampm}`;
-  if (description?.trim()) label += ` · ${description.trim()}`;
-  return label;
-}
-
-// ---------------------------------------------------------------------------
-// Data helpers (mirror the SQLite queries using in-memory arrays)
-// ---------------------------------------------------------------------------
-function getSlots(includeFull = false) {
-  return state.slots
-    .map((slot) => {
-      const signupCount = state.participants.filter((p) => p.slot_id === slot.id).length;
-      return {
-        id: slot.id,
-        label: slot.label,
-        capacity: slot.capacity,
-        signupCount,
-        remaining: slot.capacity - signupCount,
-      };
-    })
-    .filter((slot) => includeFull || slot.remaining > 0);
-}
-
-function getParticipants() {
-  return state.participants
-    .slice()
-    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-    .map((p) => {
-      const slot = state.slots.find((s) => s.id === p.slot_id);
-      const visibleResponses = Object.fromEntries(
-        Object.entries(p.responses || {}).filter(([key]) => visibleResponseKeys.has(key)),
-      );
-      return {
-        id: p.id,
-        name: p.name,
-        phone: p.phone,
-        email: p.email,
-        age: p.age,
-        enrolled: p.enrolled,
-        responses: visibleResponses,
-        attendance: p.attendance,
-        createdAt: p.createdAt,
-        slot: slot ? slot.label : "Unknown",
-      };
-    });
-}
-
-// ---------------------------------------------------------------------------
-// API handler
+// Handler
 // ---------------------------------------------------------------------------
 export default async function handler(req, res) {
+  // Config guards
   if (!ADMIN_PASSWORD) {
-    return sendJson(res, 503, { error: "Server misconfigured: ADMIN_PASSWORD environment variable is not set." });
+    return sendJson(res, 503, { error: "Server misconfigured: ADMIN_PASSWORD is not set." });
+  }
+  if (!process.env.DATABASE_URL) {
+    return sendJson(res, 503, { error: "Server misconfigured: DATABASE_URL is not set." });
   }
 
-  const url = new URL(req.url, `https://${req.headers.host}`);
+  const sql = getDb();
+
+  try {
+    await ensureSchema(sql);
+  } catch {
+    global.__schemaReady = false; // retry next request
+    return sendJson(res, 503, { error: "Could not connect to the database. Please try again." });
+  }
+
+  const url      = new URL(req.url, `https://${req.headers.host}`);
   const pathname = url.pathname;
+
+  // ── Public routes ──────────────────────────────────────────────────────────
 
   // GET /api/slots
   if (req.method === "GET" && pathname === "/api/slots") {
-    return sendJson(res, 200, getSlots(false));
+    return sendJson(res, 200, await getSlots(sql, false));
   }
 
   // POST /api/admin/login
@@ -178,7 +225,7 @@ export default async function handler(req, res) {
       return sendJson(res, 401, { error: "Incorrect password." });
     }
     const token = randomBytes(32).toString("hex");
-    state.sessions.add(token);
+    sessions.add(token);
     setAdminCookie(res, token);
     return sendJson(res, 200, { message: "Logged in." });
   }
@@ -186,72 +233,80 @@ export default async function handler(req, res) {
   // POST /api/admin/logout
   if (req.method === "POST" && pathname === "/api/admin/logout") {
     const token = parseCookies(req).admin_session;
-    if (token) state.sessions.delete(token);
+    if (token) sessions.delete(token);
     clearAdminCookie(res);
     return sendJson(res, 200, { message: "Logged out." });
   }
 
-  // Auth guard for admin + attendance routes
-  if ((pathname === "/api/admin" || pathname.startsWith("/api/attendance/")) && !isAdminAuthenticated(req)) {
-    return sendJson(res, 401, { error: "Admin password required." });
-  }
-
-  // GET /api/admin
-  if (req.method === "GET" && pathname === "/api/admin") {
-    return sendJson(res, 200, {
-      participants: getParticipants(),
-      slots: getSlots(true),
-    });
-  }
-
-  // POST /api/bookings
+  // POST /api/bookings  (public — no auth required)
   if (req.method === "POST" && pathname === "/api/bookings") {
     try {
-      const booking = await readJson(req);
-      const age = Number(booking.age);
-      const enrolled = booking.enrolled === true || booking.enrolled === "true";
-      const slotId = Number(booking.slotId);
-      const name = String(booking.name || "").trim();
-      const phone = String(booking.phone || "").trim();
-      const email = String(booking.email || "").trim();
-      const responses = booking.responses && typeof booking.responses === "object" ? booking.responses : {};
+      const booking   = await readJson(req);
+      const age       = Number(booking.age);
+      const enrolled  = booking.enrolled === true || booking.enrolled === "true";
+      const slotId    = Number(booking.slotId);
+      const name      = String(booking.name  || "").trim();
+      const phone     = String(booking.phone || "").trim();
+      const email     = String(booking.email || "").trim();
+      const responses = booking.responses && typeof booking.responses === "object"
+        ? booking.responses : {};
 
       if (!name || !phone || !email || !slotId || !Number.isInteger(age)) {
         return sendJson(res, 400, { error: "Please complete all required fields." });
       }
-
+      if (!/^[0-9]{10}$/.test(phone)) {
+        return sendJson(res, 400, { error: "Please enter a valid 10-digit mobile number." });
+      }
       if (age < 18 || age > 35 || !enrolled) {
         return sendJson(res, 403, { error: "This study is only open to enrolled students aged 18–35." });
       }
 
-      const slot = state.slots.find((s) => s.id === slotId);
+      // Check slot exists and has capacity
+      const [slot] = await sql`
+        SELECT s.id, s.capacity, COUNT(p.id)::int AS signup_count
+        FROM slots s
+        LEFT JOIN participants p ON p.slot_id = s.id
+        WHERE s.id = ${slotId}
+        GROUP BY s.id
+      `;
       if (!slot) {
         return sendJson(res, 404, { error: "That appointment slot does not exist." });
       }
-
-      const signupCount = state.participants.filter((p) => p.slot_id === slotId).length;
-      if (signupCount >= slot.capacity) {
+      if (slot.signup_count >= slot.capacity) {
         return sendJson(res, 409, { error: "That slot is full. Please choose another time." });
       }
 
-      const id = state.nextId++;
-      state.participants.push({
-        id,
-        name,
-        phone,
-        email,
-        age,
-        enrolled: enrolled ? 1 : 0,
-        responses,
-        slot_id: slotId,
-        attendance: "pending",
-        createdAt: new Date().toISOString(),
-      });
-
-      return sendJson(res, 201, { id, message: "Your appointment has been booked." });
+      const [row] = await sql`
+        INSERT INTO participants (name, phone, email, age, enrolled, responses_json, slot_id)
+        VALUES (${name}, ${phone}, ${email}, ${age}, ${enrolled}, ${JSON.stringify(responses)}, ${slotId})
+        RETURNING id
+      `;
+      return sendJson(res, 201, { id: row.id, message: "Your appointment has been booked." });
     } catch {
       return sendJson(res, 400, { error: "The booking could not be saved." });
     }
+  }
+
+  // ── Auth guard ─────────────────────────────────────────────────────────────
+  const requiresAuth =
+    pathname === "/api/admin" ||
+    (pathname.startsWith("/api/admin/") &&
+      pathname !== "/api/admin/login" &&
+      pathname !== "/api/admin/logout") ||
+    pathname.startsWith("/api/attendance/");
+
+  if (requiresAuth && !isAdminAuthenticated(req)) {
+    return sendJson(res, 401, { error: "Admin password required." });
+  }
+
+  // ── Protected admin routes ─────────────────────────────────────────────────
+
+  // GET /api/admin
+  if (req.method === "GET" && pathname === "/api/admin") {
+    return sendJson(res, 200, {
+      participants: await getParticipants(sql),
+      slots:        await getSlots(sql, true),
+    });
   }
 
   // PATCH /api/attendance/:id
@@ -264,16 +319,18 @@ export default async function handler(req, res) {
       return sendJson(res, 400, { error: "Invalid attendance update." });
     }
 
-    const participant = state.participants.find((p) => p.id === participantId);
-    if (!participant) {
+    const rows = await sql`
+      UPDATE participants SET attendance = ${attendance}
+      WHERE id = ${participantId}
+      RETURNING id
+    `;
+    if (rows.length === 0) {
       return sendJson(res, 404, { error: "Participant not found." });
     }
-
-    participant.attendance = attendance;
     return sendJson(res, 200, { message: "Attendance updated." });
   }
 
-  // POST /api/admin/slots — create a new slot
+  // POST /api/admin/slots — create a slot
   if (req.method === "POST" && pathname === "/api/admin/slots") {
     const { date, time, capacity, description } = await readJson(req);
 
@@ -290,27 +347,32 @@ export default async function handler(req, res) {
     }
 
     const label = buildSlotLabel(date, time, description);
-    const id = state.nextSlotId++;
-    const slot = { id, label, capacity: cap };
-    state.slots.push(slot);
-
-    return sendJson(res, 201, { slot: { ...slot, signupCount: 0, remaining: cap } });
+    const [newSlot] = await sql`
+      INSERT INTO slots (label, capacity) VALUES (${label}, ${cap})
+      RETURNING id, label, capacity
+    `;
+    return sendJson(res, 201, {
+      slot: { ...newSlot, signupCount: 0, remaining: cap },
+    });
   }
 
-  // DELETE /api/admin/slots/:id — remove a slot (only if no participants booked)
+  // DELETE /api/admin/slots/:id — remove a slot (blocked if participants exist)
   if (req.method === "DELETE" && pathname.startsWith("/api/admin/slots/")) {
     const slotId = Number(pathname.split("/").pop());
-    const slot = state.slots.find((s) => s.id === slotId);
+
+    const [slot] = await sql`SELECT id FROM slots WHERE id = ${slotId}`;
     if (!slot) return sendJson(res, 404, { error: "Slot not found." });
 
-    const hasParticipants = state.participants.some((p) => p.slot_id === slotId);
-    if (hasParticipants) {
+    const [{ count }] = await sql`
+      SELECT COUNT(*)::int AS count FROM participants WHERE slot_id = ${slotId}
+    `;
+    if (count > 0) {
       return sendJson(res, 409, {
-        error: "This slot has participants booked. Remove their bookings before deleting the slot.",
+        error: "This slot has participants booked. Remove their bookings before deleting.",
       });
     }
 
-    state.slots = state.slots.filter((s) => s.id !== slotId);
+    await sql`DELETE FROM slots WHERE id = ${slotId}`;
     return sendJson(res, 200, { message: "Slot deleted." });
   }
 
