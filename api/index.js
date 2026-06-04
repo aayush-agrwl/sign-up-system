@@ -200,8 +200,8 @@ export default async function handler(req, res) {
         return sendJson(res, 400, { error: "Please complete all required fields." });
       }
 
-      if (age < 18 || age > 26 || !enrolled) {
-        return sendJson(res, 403, { error: "This study is only open to enrolled students aged 18-26." });
+      if (age < 18 || age > 35 || !enrolled) {
+        return sendJson(res, 403, { error: "This study is only open to enrolled students aged 18–35." });
       }
 
       const slot = state.slots.find((s) => s.id === slotId);

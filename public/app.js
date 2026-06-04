@@ -332,7 +332,7 @@ screeningForm.addEventListener("submit", async (event) => {
     responses: collectQuestionResponses(formData),
   };
 
-  if (age < 18 || age > 26 || !enrolled) {
+  if (age < 18 || age > 35 || !enrolled) {
     setButtonLoading(submitBtn, false);
     showMessage("Thank you for your interest. This study is only open to enrolled students aged 18–26.", "warning");
     return;
@@ -377,11 +377,11 @@ bookingForm.addEventListener("submit", async (event) => {
       return;
     }
 
-    showMessage("Your session has been booked. We look forward to seeing you!", "success");
     screeningForm.reset();
     clearSlots();
     currentParticipant = null;
-    window.scrollTo({ top: document.getElementById("screening").offsetTop - 80, behavior: "smooth" });
+    message.hidden = true;
+    document.getElementById("booking-success-modal").hidden = false;
   } catch {
     setButtonLoading(submitBtn, false);
     showMessage("Could not complete the booking. Please try again.", "warning");

@@ -253,8 +253,8 @@ async function handleApi(request, response, pathname) {
         return sendJson(response, 400, { error: "Please complete all required fields." });
       }
 
-      if (age < 18 || age > 26 || !enrolled) {
-        return sendJson(response, 403, { error: "This study is only open to enrolled students aged 18-26." });
+      if (age < 18 || age > 35 || !enrolled) {
+        return sendJson(response, 403, { error: "This study is only open to enrolled students aged 18–35." });
       }
 
       const slot = db
