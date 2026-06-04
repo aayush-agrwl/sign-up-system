@@ -873,7 +873,23 @@ mark.hi {
 
 /* ── Responsive ──────────────────────────── */
 @media (max-width: 820px) {
-  .site-header,
+  /* ── Header: keep logo + nav on one row, shrink logo ── */
+  .site-header {
+    flex-wrap: wrap;
+    gap: 10px 16px;
+    padding: 12px clamp(16px, 4vw, 24px);
+  }
+
+  .brand img {
+    height: 38px;
+  }
+
+  nav {
+    gap: 12px;
+    font-size: 0.88rem;
+  }
+
+  /* ── Dashboard header still stacks (has action buttons) ── */
   .dashboard-header {
     align-items: flex-start;
     flex-direction: column;
@@ -888,11 +904,17 @@ mark.hi {
     flex: 1 1 140px;
   }
 
+  /* ── Hero ── */
   .hero {
     min-height: auto;
-    padding-top: 48px;
+    padding: 40px 0 32px;
   }
 
+  h1 {
+    font-size: clamp(2rem, 8vw, 3rem);
+  }
+
+  /* ── Grids ── */
   .info-grid,
   .study-panel,
   .response-list,
@@ -909,15 +931,46 @@ mark.hi {
     grid-column: auto;
   }
 
+  /* ── Form ── */
   .form-panel {
     padding: 20px;
   }
 
-  input, select, .button {
+  input, select {
     min-height: 52px;
     font-size: 1rem;
   }
 
+  .button {
+    min-height: 52px;
+    font-size: 1rem;
+  }
+
+  /* Submit buttons full-width inside forms */
+  .form-panel > .button,
+  .slots-panel > .button {
+    width: 100%;
+    justify-content: center;
+  }
+
+  /* Hero CTA full-width */
+  .hero .button {
+    width: 100%;
+    justify-content: center;
+  }
+
+  /* ── Admin login: don't over-stretch on small screens ── */
+  .login-main {
+    min-height: auto;
+    padding: 40px 0;
+    align-items: start;
+  }
+
+  .login-panel {
+    width: 100%;
+  }
+
+  /* ── Table ── */
   table {
     min-width: 860px;
   }
@@ -926,6 +979,7 @@ mark.hi {
     gap: 16px;
   }
 
+  /* ── Choice cards ── */
   .choice-group {
     flex-direction: column;
   }
