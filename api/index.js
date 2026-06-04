@@ -12,17 +12,19 @@ if (!global.__bookingState) {
     sessions: new Set(),
     participants: [],
     nextId: 1,
-    slots: [
-      { id: 1, label: "Monday, June 3 at 10:00 AM", capacity: 4 },
-      { id: 2, label: "Monday, June 3 at 2:00 PM", capacity: 4 },
-      { id: 3, label: "Tuesday, June 4 at 11:00 AM", capacity: 4 },
-      { id: 4, label: "Wednesday, June 5 at 3:00 PM", capacity: 4 },
-      { id: 5, label: "Thursday, June 6 at 1:00 PM", capacity: 4 },
-    ],
+    nextSlotId: 1,
+    slots: [],
   };
 }
 
 const state = global.__bookingState;
+
+// Backfill nextSlotId for existing warm instances
+if (!state.nextSlotId) {
+  state.nextSlotId = state.slots.length
+    ? Math.max(...state.slots.map((s) => s.id)) + 1
+    : 1;
+}
 
 const visibleResponseKeys = new Set([
   "institution_name",
@@ -91,6 +93,24 @@ async function readJson(req) {
   let body = "";
   for await (const chunk of req) body += chunk;
   return body ? JSON.parse(body) : {};
+}
+
+// ---------------------------------------------------------------------------
+// Slot label builder
+// ---------------------------------------------------------------------------
+function buildSlotLabel(date, time, description) {
+  // date: "YYYY-MM-DD", time: "HH:MM"
+  const [year, month, day] = date.split("-").map(Number);
+  const [hour, minute] = time.split(":").map(Number);
+  const d = new Date(year, month - 1, day);
+  const DAYS = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+  const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+  const h12 = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
+  const ampm = hour < 12 ? "AM" : "PM";
+  const minStr = minute.toString().padStart(2, "0");
+  let label = `${DAYS[d.getDay()]}, ${MONTHS[month - 1]} ${day} at ${h12}:${minStr} ${ampm}`;
+  if (description?.trim()) label += ` · ${description.trim()}`;
+  return label;
 }
 
 // ---------------------------------------------------------------------------
@@ -251,6 +271,47 @@ export default async function handler(req, res) {
 
     participant.attendance = attendance;
     return sendJson(res, 200, { message: "Attendance updated." });
+  }
+
+  // POST /api/admin/slots — create a new slot
+  if (req.method === "POST" && pathname === "/api/admin/slots") {
+    const { date, time, capacity, description } = await readJson(req);
+
+    if (!date || !time) {
+      return sendJson(res, 400, { error: "Date and time are required." });
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{2}:\d{2}$/.test(time)) {
+      return sendJson(res, 400, { error: "Invalid date or time format." });
+    }
+
+    const cap = Number(capacity);
+    if (!Number.isInteger(cap) || cap < 1 || cap > 100) {
+      return sendJson(res, 400, { error: "Capacity must be a whole number between 1 and 100." });
+    }
+
+    const label = buildSlotLabel(date, time, description);
+    const id = state.nextSlotId++;
+    const slot = { id, label, capacity: cap };
+    state.slots.push(slot);
+
+    return sendJson(res, 201, { slot: { ...slot, signupCount: 0, remaining: cap } });
+  }
+
+  // DELETE /api/admin/slots/:id — remove a slot (only if no participants booked)
+  if (req.method === "DELETE" && pathname.startsWith("/api/admin/slots/")) {
+    const slotId = Number(pathname.split("/").pop());
+    const slot = state.slots.find((s) => s.id === slotId);
+    if (!slot) return sendJson(res, 404, { error: "Slot not found." });
+
+    const hasParticipants = state.participants.some((p) => p.slot_id === slotId);
+    if (hasParticipants) {
+      return sendJson(res, 409, {
+        error: "This slot has participants booked. Remove their bookings before deleting the slot.",
+      });
+    }
+
+    state.slots = state.slots.filter((s) => s.id !== slotId);
+    return sendJson(res, 200, { message: "Slot deleted." });
   }
 
   return sendJson(res, 404, { error: "API route not found." });

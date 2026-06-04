@@ -7,6 +7,17 @@ const totalParticipants = document.querySelector("#total-participants");
 const totalAttended = document.querySelector("#total-attended");
 const totalPending = document.querySelector("#total-pending");
 
+// Slot creation elements
+const toggleCreateSlotBtn = document.querySelector("#toggle-create-slot-btn");
+const createSlotPanel = document.querySelector("#create-slot-panel");
+const createSlotBtn = document.querySelector("#create-slot-btn");
+const cancelCreateSlotBtn = document.querySelector("#cancel-create-slot-btn");
+const createSlotMsg = document.querySelector("#create-slot-message");
+const newSlotDate = document.querySelector("#new-slot-date");
+const newSlotTime = document.querySelector("#new-slot-time");
+const newSlotCapacity = document.querySelector("#new-slot-capacity");
+const newSlotDescription = document.querySelector("#new-slot-description");
+
 let dashboardData = {
   participants: [],
   slots: [],
@@ -190,14 +201,29 @@ function renderParticipants(participants) {
 function renderSlots(slots) {
   slotSummary.innerHTML = "";
 
+  if (slots.length === 0) {
+    slotSummary.innerHTML = `<p class="empty-state" style="padding:20px">No slots yet. Create one above.</p>`;
+    return;
+  }
+
   slots.forEach((slot) => {
     const percentFull = Math.round((slot.signupCount / slot.capacity) * 100);
+    const canDelete = slot.signupCount === 0;
     const item = document.createElement("article");
     item.className = "slot-card";
     item.innerHTML = `
-      <div>
-        <h3>${escapeHtml(slot.label)}</h3>
-        <p>${slot.signupCount} signup${slot.signupCount === 1 ? "" : "s"} · ${slot.remaining} open</p>
+      <div class="slot-card-row">
+        <div class="slot-card-info">
+          <h3>${escapeHtml(slot.label)}</h3>
+          <p>${slot.signupCount} signup${slot.signupCount === 1 ? "" : "s"} &middot; ${slot.remaining} of ${slot.capacity} open</p>
+        </div>
+        <button
+          class="slot-delete-btn"
+          data-slot-id="${slot.id}"
+          title="${canDelete ? "Delete this slot" : "Cannot delete — participants are booked"}"
+          ${canDelete ? "" : "disabled"}
+          aria-label="Delete slot"
+        >&times;</button>
       </div>
       <div class="progress" aria-label="${percentFull}% full">
         <span style="width: ${percentFull}%"></span>
@@ -205,6 +231,92 @@ function renderSlots(slots) {
     `;
     slotSummary.append(item);
   });
+
+  slotSummary.querySelectorAll(".slot-delete-btn").forEach((btn) => {
+    btn.addEventListener("click", () => deleteSlot(Number(btn.dataset.slotId)));
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Slot creation
+// ---------------------------------------------------------------------------
+function setCreateSlotPanelVisible(visible) {
+  createSlotPanel.hidden = !visible;
+  toggleCreateSlotBtn.textContent = visible ? "Cancel" : "+ New slot";
+  if (visible) {
+    // Pre-fill date to today
+    if (!newSlotDate.value) {
+      newSlotDate.value = new Date().toISOString().slice(0, 10);
+    }
+    newSlotDate.focus();
+  }
+}
+
+function showCreateMsg(text, isError = false) {
+  createSlotMsg.textContent = text;
+  createSlotMsg.className = `create-slot-msg ${isError ? "create-slot-msg--error" : "create-slot-msg--ok"}`;
+  createSlotMsg.hidden = false;
+}
+
+async function createSlot() {
+  const date = newSlotDate.value.trim();
+  const time = newSlotTime.value.trim();
+  const capacity = newSlotCapacity.value;
+  const description = newSlotDescription.value.trim();
+
+  if (!date || !time) {
+    showCreateMsg("Please set both a date and a time.", true);
+    return;
+  }
+
+  createSlotBtn.classList.add("loading");
+  createSlotBtn.disabled = true;
+  createSlotMsg.hidden = true;
+
+  try {
+    const res = await fetch("/api/admin/slots", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ date, time, capacity: Number(capacity), description }),
+    });
+    const data = await res.json();
+    createSlotBtn.classList.remove("loading");
+    createSlotBtn.disabled = false;
+
+    if (!res.ok) {
+      showCreateMsg(data.error || "Could not create slot.", true);
+      return;
+    }
+
+    // Reset form and collapse panel
+    newSlotDate.value = "";
+    newSlotTime.value = "";
+    newSlotCapacity.value = "4";
+    newSlotDescription.value = "";
+    createSlotMsg.hidden = true;
+    setCreateSlotPanelVisible(false);
+    await loadDashboard();
+  } catch {
+    createSlotBtn.classList.remove("loading");
+    createSlotBtn.disabled = false;
+    showCreateMsg("Network error. Please try again.", true);
+  }
+}
+
+async function deleteSlot(slotId) {
+  if (!confirm("Delete this slot? This cannot be undone.")) return;
+
+  try {
+    const res = await fetch(`/api/admin/slots/${slotId}`, { method: "DELETE" });
+    const data = await res.json();
+    if (!res.ok) {
+      alert(data.error || "Could not delete slot.");
+      return;
+    }
+    await loadDashboard();
+  } catch {
+    alert("Network error. Please try again.");
+  }
 }
 
 function renderMetrics(participants) {
@@ -236,4 +348,11 @@ async function logout() {
 refreshButton.addEventListener("click", loadDashboard);
 downloadCsvButton.addEventListener("click", downloadCsv);
 logoutButton.addEventListener("click", logout);
+
+toggleCreateSlotBtn.addEventListener("click", () =>
+  setCreateSlotPanelVisible(createSlotPanel.hidden)
+);
+cancelCreateSlotBtn.addEventListener("click", () => setCreateSlotPanelVisible(false));
+createSlotBtn.addEventListener("click", createSlot);
+
 loadDashboard();

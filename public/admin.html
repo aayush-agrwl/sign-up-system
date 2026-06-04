@@ -71,9 +71,37 @@
         </div>
 
         <aside class="table-panel">
-          <div class="panel-heading">
+          <div class="panel-heading panel-heading--action">
             <h2>Signups per slot</h2>
+            <button id="toggle-create-slot-btn" class="button small" type="button">+ New slot</button>
           </div>
+
+          <div id="create-slot-panel" class="create-slot-panel" hidden>
+            <div class="create-slot-fields">
+              <label>
+                Date
+                <input type="date" id="new-slot-date" required>
+              </label>
+              <label>
+                Time
+                <input type="time" id="new-slot-time" required>
+              </label>
+              <label>
+                Capacity
+                <input type="number" id="new-slot-capacity" value="4" min="1" max="100" required>
+              </label>
+              <label class="create-slot-wide">
+                Description <span class="field-optional">(optional)</span>
+                <input type="text" id="new-slot-description" placeholder="e.g. Batch A, Lab Room 2">
+              </label>
+            </div>
+            <div class="create-slot-actions">
+              <button id="create-slot-btn" class="button primary" type="button">Create slot</button>
+              <button id="cancel-create-slot-btn" class="button secondary" type="button">Cancel</button>
+            </div>
+            <p id="create-slot-message" class="create-slot-msg" hidden></p>
+          </div>
+
           <div id="slot-summary" class="slot-summary"></div>
         </aside>
       </section>
