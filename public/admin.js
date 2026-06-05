@@ -37,50 +37,43 @@ function csvCell(value) {
   return `"${text.replaceAll('"', '""')}"`;
 }
 
-function responseColumns(participants) {
-  const columns = new Map();
-
-  participants.forEach((participant) => {
-    Object.entries(participant.responses || {}).forEach(([key, response]) => {
-      if (!columns.has(key)) {
-        columns.set(key, response?.label || key);
-      }
-    });
-  });
-
-  return columns;
-}
+// All questions asked on the sign-up page, in the order they appear.
+const RESPONSE_COLUMNS = [
+  { key: "institution_name", label: "Institution name" },
+  { key: "employment",       label: "Employment status" },
+  { key: "field",            label: "Field of study" },
+  { key: "education",        label: "Highest level of education" },
+  { key: "gender",           label: "Gender" },
+  { key: "personal_comp",    label: "Has personal computer / laptop / tablet" },
+  { key: "future_studies",   label: "Open to future CSBC studies" },
+];
 
 function buildParticipantCsv(participants) {
-  const questionColumns = responseColumns(participants);
   const headers = [
     "Participant ID",
     "Name",
     "Phone",
     "Email",
     "Age",
-    "Enrolled in Institution",
-    "Appointment Slot",
-    "Attendance Status",
-    "Created At",
-    ...questionColumns.values(),
+    "Enrolled in institution",
+    "Appointment slot",
+    "Attendance status",
+    "Signed up at",
+    ...RESPONSE_COLUMNS.map((c) => c.label),
   ];
 
-  const rows = participants.map((participant) => {
-    const answers = [...questionColumns.keys()].map((key) => participant.responses?.[key]?.value || "");
-    return [
-      participant.id,
-      participant.name,
-      participant.phone,
-      participant.email,
-      participant.age,
-      participant.enrolled ? "Yes" : "No",
-      participant.slot,
-      participant.attendance,
-      participant.createdAt,
-      ...answers,
-    ];
-  });
+  const rows = participants.map((p) => [
+    p.id,
+    p.name,
+    p.phone,
+    p.email,
+    p.age,
+    p.enrolled ? "Yes" : "No",
+    p.slot,
+    p.attendance,
+    p.createdAt,
+    ...RESPONSE_COLUMNS.map((c) => p.responses?.[c.key]?.value || ""),
+  ]);
 
   return [headers, ...rows].map((row) => row.map(csvCell).join(",")).join("\r\n");
 }
