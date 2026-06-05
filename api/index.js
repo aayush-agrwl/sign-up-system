@@ -54,6 +54,7 @@ async function ensureSchema(sql) {
 const visibleResponseKeys = new Set([
   "institution_name", "employment", "field", "education",
   "gender", "religion", "state", "live", "caste", "personal_comp",
+  "future_studies",
 ]);
 
 async function getSlots(sql, includeFull = false) {
