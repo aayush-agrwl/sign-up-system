@@ -143,6 +143,7 @@ function renderParticipants(participants) {
 
   participants.forEach((participant) => {
     const row = document.createElement("tr");
+    if (participant.attendance === "deleted") row.classList.add("participant-deleted");
     row.innerHTML = `
       <td>${escapeHtml(participant.name)}</td>
       <td>${escapeHtml(participant.phone)}</td>
@@ -159,6 +160,7 @@ function renderParticipants(participants) {
           <option value="pending"${participant.attendance === "pending" ? " selected" : ""}>Pending</option>
           <option value="attended"${participant.attendance === "attended" ? " selected" : ""}>Attended</option>
           <option value="missed"${participant.attendance === "missed" ? " selected" : ""}>Missed</option>
+          <option value="deleted"${participant.attendance === "deleted" ? " selected" : ""}>Deleted from slot</option>
         </select>
       </td>
     `;

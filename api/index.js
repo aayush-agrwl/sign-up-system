@@ -63,8 +63,8 @@ async function getSlots(sql, includeFull = false) {
       s.id,
       s.label,
       s.capacity,
-      COUNT(p.id)::int                  AS signup_count,
-      (s.capacity - COUNT(p.id)::int)   AS remaining
+      COUNT(CASE WHEN p.attendance != 'deleted' THEN p.id END)::int AS signup_count,
+      (s.capacity - COUNT(CASE WHEN p.attendance != 'deleted' THEN p.id END)::int) AS remaining
     FROM slots s
     LEFT JOIN participants p ON p.slot_id = s.id
     GROUP BY s.id
@@ -267,7 +267,8 @@ export default async function handler(req, res) {
 
       // Check slot exists and has capacity
       const [slot] = await sql`
-        SELECT s.id, s.capacity, COUNT(p.id)::int AS signup_count
+        SELECT s.id, s.capacity,
+          COUNT(CASE WHEN p.attendance != 'deleted' THEN p.id END)::int AS signup_count
         FROM slots s
         LEFT JOIN participants p ON p.slot_id = s.id
         WHERE s.id = ${slotId}
@@ -317,7 +318,7 @@ export default async function handler(req, res) {
   if (req.method === "PATCH" && pathname.startsWith("/api/attendance/")) {
     const participantId = Number(pathname.split("/").pop());
     const { attendance } = await readJson(req);
-    const allowed = ["pending", "attended", "missed"];
+    const allowed = ["pending", "attended", "missed", "deleted"];
 
     if (!participantId || !allowed.includes(attendance)) {
       return sendJson(res, 400, { error: "Invalid attendance update." });
