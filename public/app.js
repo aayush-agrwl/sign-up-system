@@ -65,56 +65,6 @@ const questionnaire = [
         required: true,
         choices: ["Female", "Male", "Non-binary", "Transgender", "Prefer not to say", "Any other gender not listed here"],
       },
-      {
-        name: "religion",
-        label: "Religion",
-        type: "select",
-        choices: ["Hinduism", "Islam", "Christianity", "Jainism", "Sikhism", "Atheist", "Prefer not to say"],
-      },
-      {
-        name: "state",
-        label: "State or union territory",
-        type: "select",
-        required: true,
-        choices: [
-          "Andaman and Nicobar Islands",
-          "Andhra Pradesh",
-          "Arunachal Pradesh",
-          "Assam",
-          "Bihar",
-          "Chandigarh",
-          "Chhattisgarh",
-          "Delhi",
-          "Goa",
-          "Gujarat",
-          "Haryana",
-          "Karnataka",
-          "Kerala",
-          "Madhya Pradesh",
-          "Maharashtra",
-          "Odisha",
-          "Punjab",
-          "Rajasthan",
-          "Tamil Nadu",
-          "Telangana",
-          "Uttar Pradesh",
-          "West Bengal",
-          "Other",
-        ],
-      },
-      {
-        name: "live",
-        label: "Where do you live?",
-        type: "select",
-        required: true,
-        choices: ["Urban area", "Rural area"],
-      },
-      {
-        name: "caste",
-        label: "Caste category",
-        type: "select",
-        choices: ["Scheduled Caste (SC)", "Scheduled Tribe (ST)", "OBC", "General", "Other", "Does not apply to me", "Prefer not to say"],
-      },
     ],
   },
   {
@@ -340,7 +290,13 @@ screeningForm.addEventListener("submit", async (event) => {
 
   if (age < 18 || age > 35 || !enrolled) {
     setButtonLoading(submitBtn, false);
-    showMessage("Thank you for your interest. This study is only open to enrolled students aged 18–26.", "warning");
+    showMessage("Thank you for your interest. This study is only open to enrolled students aged 18–35.", "warning");
+    return;
+  }
+
+  if (formData.get("personal_comp") !== "Yes") {
+    setButtonLoading(submitBtn, false);
+    showMessage("Thank you for your interest. This study requires participants to have access to a personal computer, laptop, or tablet.", "warning");
     return;
   }
 

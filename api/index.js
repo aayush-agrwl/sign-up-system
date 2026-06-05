@@ -260,6 +260,9 @@ export default async function handler(req, res) {
       if (age < 18 || age > 35 || !enrolled) {
         return sendJson(res, 403, { error: "This study is only open to enrolled students aged 18–35." });
       }
+      if (responses?.personal_comp?.value !== "Yes") {
+        return sendJson(res, 403, { error: "This study requires participants to have access to a personal computer, laptop, or tablet." });
+      }
 
       // Check slot exists and has capacity
       const [slot] = await sql`
