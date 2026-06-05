@@ -40,9 +40,6 @@ function csvCell(value) {
 // All questions asked on the sign-up page, in the order they appear.
 const RESPONSE_COLUMNS = [
   { key: "institution_name", label: "Institution name" },
-  { key: "employment",       label: "Employment status" },
-  { key: "field",            label: "Field of study" },
-  { key: "education",        label: "Highest level of education" },
   { key: "gender",           label: "Gender" },
   { key: "personal_comp",    label: "Has personal computer / laptop / tablet" },
   { key: "future_studies",   label: "Open to future CSBC studies" },
@@ -143,7 +140,9 @@ function renderParticipants(participants) {
 
   participants.forEach((participant) => {
     const row = document.createElement("tr");
-    if (participant.attendance === "deleted") row.classList.add("participant-deleted");
+    if (participant.attendance === "deleted" || participant.attendance === "cancelled") {
+      row.classList.add("participant-inactive");
+    }
     row.innerHTML = `
       <td>${escapeHtml(participant.name)}</td>
       <td>${escapeHtml(participant.phone)}</td>
@@ -160,6 +159,7 @@ function renderParticipants(participants) {
           <option value="pending"${participant.attendance === "pending" ? " selected" : ""}>Pending</option>
           <option value="attended"${participant.attendance === "attended" ? " selected" : ""}>Attended</option>
           <option value="missed"${participant.attendance === "missed" ? " selected" : ""}>Missed</option>
+          <option value="cancelled"${participant.attendance === "cancelled" ? " selected" : ""}>Cancelled by participant</option>
           <option value="deleted"${participant.attendance === "deleted" ? " selected" : ""}>Deleted from slot</option>
         </select>
       </td>
@@ -203,7 +203,7 @@ function renderSlots(slots) {
 
   slots.forEach((slot) => {
     const percentFull = Math.round((slot.signupCount / slot.capacity) * 100);
-    const canDelete = slot.signupCount === 0;
+    const canDelete = (slot.bookingCount ?? slot.signupCount) === 0;
     const item = document.createElement("article");
     item.className = "slot-card";
     item.innerHTML = `

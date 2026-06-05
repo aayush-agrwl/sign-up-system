@@ -1,12 +1,12 @@
 # Research Participant Booking App
 
-A beginner-friendly local web app for screening research participants, showing eligible users available appointment slots, saving bookings in SQLite, and tracking signups from an admin dashboard.
+A beginner-friendly web app for screening research participants, showing eligible users available appointment slots, saving bookings, and tracking signups from an admin dashboard.
 
 ## Project Overview
 
 This app supports research participant recruitment by combining eligibility screening, questionnaire collection, and appointment booking in one local web tool. Participants read the study information, complete contact and screening questions, confirm eligibility, and select an available session slot. Admin users log in with a server-side password to review bookings, track attendance, inspect questionnaire responses, and export participant data as CSV.
 
-Key features include age and enrollment eligibility checks, mobile-friendly participant forms, local SQLite storage, password-protected admin access, attendance tracking, slot signup summaries, and Excel/Google Sheets-friendly CSV export. The app uses beginner-friendly technologies: HTML, CSS, plain JavaScript, Node.js, and SQLite.
+Key features include age and enrollment eligibility checks, mobile-friendly participant forms, password-protected admin access, attendance tracking, slot signup summaries, participant self-service cancellation/rescheduling, and Excel/Google Sheets-friendly CSV export. The app uses beginner-friendly technologies: HTML, CSS, plain JavaScript, Node.js, SQLite for local runs, and Neon Postgres for Vercel deployments.
 
 ## Requirements
 
@@ -29,7 +29,9 @@ participant booking app/
 │   ├── .gitkeep        # Keeps the folder in the shared project
 │   └── booking.db      # Local SQLite database, created automatically and ignored by Git
 ├── .gitignore          # Excludes local data, secrets, dependencies, logs, and system files
-├── server.js           # Small Node server, API routes, static file hosting, database setup
+├── server.js           # Local Node server, API routes, static file hosting, SQLite setup
+├── api/index.js        # Vercel serverless API backed by Neon Postgres
+├── vercel.json         # Vercel static/API routing
 └── README.md           # Setup and usage notes
 ```
 
@@ -66,11 +68,12 @@ http://localhost:3000/admin.html
 
 ## How It Works
 
-- The participant page explains the study and asks for name, phone number, email, eligibility details, and adapted demographic/screening questions from the CSV questionnaire.
-- Users can continue only if they are 18-26 and currently enrolled in an educational institution.
+- The participant page explains the study and asks for name, phone number, email, eligibility details, and demographic/logistics questions.
+- Users can continue only if they are 18-35, currently enrolled in an educational institution, and have access to a personal computer, laptop, or tablet.
 - Eligible users see open appointment slots and can choose one slot.
+- After booking, participants can cancel their booking or reschedule into another available slot.
 - Bookings and questionnaire responses are stored locally in `data/booking.db`.
-- The admin dashboard shows all participants, phone/email contact details, expandable questionnaire responses, signup counts per slot, and an attendance dropdown for each participant.
+- The admin dashboard shows all participants, phone/email contact details, expandable questionnaire responses, signup counts per slot, slot creation/deletion controls, and an attendance dropdown for each participant.
 - Use the admin dashboard's `Download CSV` button to export participant details, appointment slot, attendance status, and questionnaire responses for Excel or Google Sheets.
 - The admin dashboard and admin APIs require the server-side `ADMIN_PASSWORD`.
 - The local database file is created at `data/booking.db` the first time the app runs.

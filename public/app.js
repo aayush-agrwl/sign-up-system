@@ -3,58 +3,16 @@ const bookingForm = document.querySelector("#booking-form");
 const slotsList = document.querySelector("#slots-list");
 const message = document.querySelector("#eligibility-message");
 const questionnaireSections = document.querySelector("#questionnaire-sections");
+const successModal = document.querySelector("#booking-success-modal");
+const confirmationName = document.querySelector("#confirmation-name");
+const confirmationEmail = document.querySelector("#confirmation-email");
+const confirmationPhone = document.querySelector("#confirmation-phone");
+const confirmationSlot = document.querySelector("#confirmation-slot");
+const managementMessage = document.querySelector("#booking-management-message");
+const cancelBookingButton = document.querySelector("#cancel-booking-button");
+const rescheduleBookingButton = document.querySelector("#reschedule-booking-button");
 
 const questionnaire = [
-  {
-    title: "Education and study profile",
-    fields: [
-      {
-        name: "employment",
-        label: "What is your employment status?",
-        type: "select",
-        required: true,
-        choices: ["Student", "Employed full-time", "Employed part-time", "Self employed", "Unemployed", "Other"],
-      },
-      {
-        name: "field",
-        label: "Primary field of study",
-        type: "select",
-        required: true,
-        choices: [
-          "Biology",
-          "Chemistry",
-          "Computer Science",
-          "Economics",
-          "English",
-          "Geography",
-          "History",
-          "International Relations",
-          "Mathematics",
-          "Media Studies/Communications",
-          "Performing Arts",
-          "Physics",
-          "Political Science",
-          "Psychology",
-          "Sociology",
-          "Other",
-        ],
-      },
-      {
-        name: "education",
-        label: "Highest level of education completed",
-        type: "select",
-        required: true,
-        choices: [
-          "No schooling completed",
-          "Primary school",
-          "Secondary school",
-          "Bachelor's degree",
-          "Master's degree",
-          "Doctoral degree",
-        ],
-      },
-    ],
-  },
   {
     title: "Demographics",
     fields: [
@@ -89,6 +47,7 @@ const questionnaire = [
 ];
 
 let currentParticipant = null;
+let activeBooking = null;
 
 const checkSVG = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
 
@@ -105,10 +64,32 @@ function setButtonLoading(btn, loading) {
 }
 
 function showMessage(text, type = "info") {
-  message.textContent = text;
+  if (Array.isArray(text)) {
+    message.innerHTML = `
+      <p>${text.length > 1 ? "Thank you for your interest. This study is currently limited to participants who meet these requirements:" : "Thank you for your interest. This study is currently limited to participants who meet this requirement:"}</p>
+      <ul>${text.map((reason) => `<li>${escapeHtml(reason)}</li>`).join("")}</ul>
+    `;
+  } else {
+    message.textContent = text;
+  }
   message.className = `message ${type}`;
   message.hidden = false;
   message.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+function showManagementMessage(text, type = "info") {
+  managementMessage.textContent = text;
+  managementMessage.className = `message ${type}`;
+  managementMessage.hidden = false;
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
 }
 
 function clearSlots() {
@@ -251,9 +232,9 @@ function renderSlots(slots) {
     label.className = "slot-option";
     label.innerHTML = `
       <input type="radio" name="slotId" value="${slot.id}" required>
-      <span class="slot-indicator">${checkSVG}</span>
-      <span class="slot-info">
-        <strong>${slot.label}</strong>
+        <span class="slot-indicator">${checkSVG}</span>
+        <span class="slot-info">
+        <strong>${escapeHtml(slot.label)}</strong>
         <span class="slot-meta">
           ${calendarSVG}
           <small>${slot.remaining} of ${slot.capacity} spots remaining &nbsp;
@@ -269,6 +250,83 @@ function renderSlots(slots) {
   bookingForm.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
+function getEligibilityIssues({ age, enrolled, personalComputer }) {
+  const issues = [];
+
+  if (age < 18 || age > 35 || !Number.isInteger(age)) {
+    issues.push("You must be between 18 and 35 years old.");
+  }
+
+  if (!enrolled) {
+    issues.push("You must currently be enrolled in an educational institution.");
+  }
+
+  if (personalComputer !== "Yes") {
+    issues.push("You must have access to a personal computer, laptop, or tablet.");
+  }
+
+  return issues;
+}
+
+async function loadAndShowSlots(messageText = "Please choose a session slot below.") {
+  const response = await fetch("/api/slots");
+  const slots = await response.json();
+  showMessage(messageText, "success");
+  renderSlots(slots);
+}
+
+function showBookingConfirmation(booking) {
+  activeBooking = booking;
+  confirmationName.textContent = booking.name;
+  confirmationEmail.textContent = booking.email;
+  confirmationPhone.textContent = booking.phone;
+  confirmationSlot.textContent = booking.slot;
+  managementMessage.hidden = true;
+  cancelBookingButton.disabled = false;
+  rescheduleBookingButton.disabled = false;
+  successModal.hidden = false;
+}
+
+async function cancelActiveBooking({ keepParticipantForReschedule = false } = {}) {
+  if (!activeBooking) return false;
+
+  const response = await fetch(`/api/bookings/${activeBooking.id}/cancel`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      email: activeBooking.email,
+      phone: activeBooking.phone,
+    }),
+  });
+  const result = await response.json();
+
+  if (!response.ok) {
+    showManagementMessage(result.error || "Could not cancel this booking. Please try again.", "warning");
+    return false;
+  }
+
+  const cancelledBooking = activeBooking;
+  activeBooking = null;
+
+  if (!keepParticipantForReschedule) {
+    currentParticipant = null;
+    cancelBookingButton.disabled = true;
+    rescheduleBookingButton.disabled = true;
+  } else {
+    currentParticipant = {
+      name: cancelledBooking.name,
+      phone: cancelledBooking.phone,
+      email: cancelledBooking.email,
+      age: cancelledBooking.age,
+      enrolled: cancelledBooking.enrolled,
+      responses: cancelledBooking.responses || {},
+      replaceBookingId: cancelledBooking.id,
+    };
+  }
+
+  return true;
+}
+
 screeningForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   clearSlots();
@@ -279,6 +337,7 @@ screeningForm.addEventListener("submit", async (event) => {
   const formData = new FormData(screeningForm);
   const age = Number(formData.get("age"));
   const enrolled = formData.get("enrolled") === "true";
+  const personalComputer = formData.get("personal_comp");
 
   currentParticipant = {
     name: formData.get("name").trim(),
@@ -295,24 +354,16 @@ screeningForm.addEventListener("submit", async (event) => {
     return;
   }
 
-  if (age < 18 || age > 35 || !enrolled) {
+  const eligibilityIssues = getEligibilityIssues({ age, enrolled, personalComputer });
+  if (eligibilityIssues.length > 0) {
     setButtonLoading(submitBtn, false);
-    showMessage("Thank you for your interest. This study is only open to enrolled students aged 18–35.", "warning");
-    return;
-  }
-
-  if (formData.get("personal_comp") !== "Yes") {
-    setButtonLoading(submitBtn, false);
-    showMessage("Thank you for your interest. This study requires participants to have access to a personal computer, laptop, or tablet.", "warning");
+    showMessage(eligibilityIssues, "warning");
     return;
   }
 
   try {
-    const response = await fetch("/api/slots");
-    const slots = await response.json();
+    await loadAndShowSlots("You are eligible. Please choose a session slot below.");
     setButtonLoading(submitBtn, false);
-    showMessage("You are eligible. Please choose a session slot below.", "success");
-    renderSlots(slots);
   } catch {
     setButtonLoading(submitBtn, false);
     showMessage("Could not load available slots. Please try again.", "warning");
@@ -350,10 +401,48 @@ bookingForm.addEventListener("submit", async (event) => {
     clearSlots();
     currentParticipant = null;
     message.hidden = true;
-    document.getElementById("booking-success-modal").hidden = false;
+    showBookingConfirmation(result.booking);
   } catch {
     setButtonLoading(submitBtn, false);
     showMessage("Could not complete the booking. Please try again.", "warning");
+  }
+});
+
+cancelBookingButton.addEventListener("click", async () => {
+  if (!activeBooking) return;
+  if (!confirm("Are you sure you want to cancel this booking?")) return;
+
+  cancelBookingButton.disabled = true;
+  rescheduleBookingButton.disabled = true;
+  const cancelled = await cancelActiveBooking();
+
+  if (cancelled) {
+    showManagementMessage("Your booking has been cancelled. The slot is now available for someone else.", "success");
+  } else {
+    cancelBookingButton.disabled = false;
+    rescheduleBookingButton.disabled = false;
+  }
+});
+
+rescheduleBookingButton.addEventListener("click", async () => {
+  if (!activeBooking) return;
+  if (!confirm("Reschedule this booking? Your current slot will be released before you choose a new one.")) return;
+
+  cancelBookingButton.disabled = true;
+  rescheduleBookingButton.disabled = true;
+  const cancelled = await cancelActiveBooking({ keepParticipantForReschedule: true });
+
+  if (!cancelled) {
+    cancelBookingButton.disabled = false;
+    rescheduleBookingButton.disabled = false;
+    return;
+  }
+
+  successModal.hidden = true;
+  try {
+    await loadAndShowSlots("Your previous booking was cancelled. Please choose a new session slot.");
+  } catch {
+    showMessage("Your previous booking was cancelled, but available slots could not be loaded. Please try again.", "warning");
   }
 });
 

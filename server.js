@@ -15,16 +15,16 @@ const dataDir = path.join(__dirname, "data");
 const dbPath = path.join(dataDir, "booking.db");
 const visibleResponseKeys = new Set([
   "institution_name",
-  "employment",
-  "field",
-  "education",
   "gender",
-  "religion",
-  "state",
-  "live",
-  "caste",
   "personal_comp",
+  "future_studies",
 ]);
+
+function sanitizeResponses(responses) {
+  return Object.fromEntries(
+    Object.entries(responses).filter(([key]) => visibleResponseKeys.has(key)),
+  );
+}
 
 if (!ADMIN_PASSWORD) {
   console.error('Please set an admin password before starting the app: ADMIN_PASSWORD="your-password" node --no-warnings server.js');
@@ -148,15 +148,18 @@ async function readJson(request) {
 }
 
 function getSlots(includeFull = false) {
-  const availabilityClause = includeFull ? "" : "HAVING s.capacity > COUNT(p.id)";
+  const availabilityClause = includeFull
+    ? ""
+    : "HAVING s.capacity > COUNT(CASE WHEN p.attendance NOT IN ('cancelled', 'deleted') THEN p.id END)";
   return db
     .prepare(`
       SELECT
         s.id,
         s.label,
         s.capacity,
-        COUNT(p.id) AS signupCount,
-        s.capacity - COUNT(p.id) AS remaining
+        COUNT(p.id) AS bookingCount,
+        COUNT(CASE WHEN p.attendance NOT IN ('cancelled', 'deleted') THEN p.id END) AS signupCount,
+        s.capacity - COUNT(CASE WHEN p.attendance NOT IN ('cancelled', 'deleted') THEN p.id END) AS remaining
       FROM slots s
       LEFT JOIN participants p ON p.slot_id = s.id
       GROUP BY s.id
@@ -200,6 +203,20 @@ function getParticipants() {
   });
 }
 
+function buildSlotLabel(date, time, description) {
+  const [year, month, day] = date.split("-").map(Number);
+  const [hour, minute] = time.split(":").map(Number);
+  const d = new Date(year, month - 1, day);
+  const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+  const h12 = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
+  const ampm = hour < 12 ? "AM" : "PM";
+  const minStr = minute.toString().padStart(2, "0");
+  let label = `${days[d.getDay()]}, ${months[month - 1]} ${day} at ${h12}:${minStr} ${ampm}`;
+  if (description?.trim()) label += ` · ${description.trim()}`;
+  return label;
+}
+
 async function handleApi(request, response, pathname) {
   if (request.method === "GET" && pathname === "/api/slots") {
     return sendJson(response, 200, getSlots(false));
@@ -227,7 +244,14 @@ async function handleApi(request, response, pathname) {
     return sendJson(response, 200, { message: "Logged out." });
   }
 
-  if ((pathname === "/api/admin" || pathname.startsWith("/api/attendance/")) && !isAdminAuthenticated(request)) {
+  if (
+    (pathname === "/api/admin" ||
+      pathname.startsWith("/api/admin/") ||
+      pathname.startsWith("/api/attendance/")) &&
+    pathname !== "/api/admin/login" &&
+    pathname !== "/api/admin/logout" &&
+    !isAdminAuthenticated(request)
+  ) {
     return sendJson(response, 401, { error: "Admin password required." });
   }
 
@@ -248,18 +272,45 @@ async function handleApi(request, response, pathname) {
       const phone = String(booking.phone || "").trim();
       const email = String(booking.email || "").trim();
       const responses = booking.responses && typeof booking.responses === "object" ? booking.responses : {};
+      const sanitizedResponses = sanitizeResponses(responses);
+      const eligibilityIssues = [];
 
       if (!name || !phone || !email || !slotId || !Number.isInteger(age)) {
         return sendJson(response, 400, { error: "Please complete all required fields." });
       }
 
-      if (age < 18 || age > 35 || !enrolled) {
-        return sendJson(response, 403, { error: "This study is only open to enrolled students aged 18–35." });
+      if (!/^[0-9]{10}$/.test(phone)) {
+        return sendJson(response, 400, { error: "Please enter a valid 10-digit mobile number." });
+      }
+
+      if (age < 18 || age > 35) {
+        eligibilityIssues.push("You must be between 18 and 35 years old.");
+      }
+
+      if (!enrolled) {
+        eligibilityIssues.push("You must currently be enrolled in an educational institution.");
+      }
+
+      if (sanitizedResponses?.personal_comp?.value !== "Yes") {
+        eligibilityIssues.push("You must have access to a personal computer, laptop, or tablet.");
+      }
+
+      if (eligibilityIssues.length > 0) {
+        return sendJson(response, 403, {
+          error: eligibilityIssues.length === 1
+            ? eligibilityIssues[0]
+            : `This study is currently limited to participants who meet these requirements: ${eligibilityIssues.join(" ")}`,
+          reasons: eligibilityIssues,
+        });
       }
 
       const slot = db
         .prepare(`
-          SELECT s.id, s.capacity, COUNT(p.id) AS signupCount
+          SELECT
+            s.id,
+            s.label,
+            s.capacity,
+            COUNT(CASE WHEN p.attendance NOT IN ('cancelled', 'deleted') THEN p.id END) AS signupCount
           FROM slots s
           LEFT JOIN participants p ON p.slot_id = s.id
           WHERE s.id = ?
@@ -275,23 +326,78 @@ async function handleApi(request, response, pathname) {
         return sendJson(response, 409, { error: "That slot is full. Please choose another time." });
       }
 
+      db
+        .prepare(`
+          UPDATE participants
+          SET attendance = 'cancelled'
+          WHERE attendance NOT IN ('cancelled', 'deleted')
+            AND (lower(email) = lower(?) OR phone = ?)
+        `)
+        .run(email, phone);
+
       const result = db
         .prepare(`
           INSERT INTO participants (name, phone, email, age, enrolled, responses_json, slot_id)
           VALUES (?, ?, ?, ?, ?, ?, ?)
         `)
-        .run(name, phone, email, age, enrolled ? 1 : 0, JSON.stringify(responses), slotId);
+        .run(name, phone, email, age, enrolled ? 1 : 0, JSON.stringify(sanitizedResponses), slotId);
 
-      return sendJson(response, 201, { id: result.lastInsertRowid, message: "Your appointment has been booked." });
+      return sendJson(response, 201, {
+        id: result.lastInsertRowid,
+        message: "Your appointment has been booked.",
+        booking: {
+          id: result.lastInsertRowid,
+          name,
+          phone,
+          email,
+          age,
+          enrolled,
+          responses: sanitizedResponses,
+          slot: slot.label,
+          attendance: "pending",
+        },
+      });
     } catch (error) {
       return sendJson(response, 400, { error: "The booking could not be saved." });
+    }
+  }
+
+  if (request.method === "POST" && pathname.startsWith("/api/bookings/") && pathname.endsWith("/cancel")) {
+    try {
+      const participantId = Number(pathname.split("/").at(-2));
+      const { email, phone } = await readJson(request);
+      const normalizedEmail = String(email || "").trim();
+      const normalizedPhone = String(phone || "").trim();
+
+      if (!participantId || !normalizedEmail || !normalizedPhone) {
+        return sendJson(response, 400, { error: "Could not verify this booking." });
+      }
+
+      const result = db
+        .prepare(`
+          UPDATE participants
+          SET attendance = 'cancelled'
+          WHERE id = ?
+            AND lower(email) = lower(?)
+            AND phone = ?
+            AND attendance NOT IN ('cancelled', 'deleted')
+        `)
+        .run(participantId, normalizedEmail, normalizedPhone);
+
+      if (result.changes === 0) {
+        return sendJson(response, 404, { error: "No active booking was found for those details." });
+      }
+
+      return sendJson(response, 200, { message: "Your booking has been cancelled." });
+    } catch {
+      return sendJson(response, 400, { error: "The booking could not be cancelled." });
     }
   }
 
   if (request.method === "PATCH" && pathname.startsWith("/api/attendance/")) {
     const participantId = Number(pathname.split("/").pop());
     const { attendance } = await readJson(request);
-    const allowedStatuses = ["pending", "attended", "missed"];
+    const allowedStatuses = ["pending", "attended", "missed", "cancelled", "deleted"];
 
     if (!participantId || !allowedStatuses.includes(attendance)) {
       return sendJson(response, 400, { error: "Invalid attendance update." });
@@ -306,6 +412,63 @@ async function handleApi(request, response, pathname) {
     }
 
     return sendJson(response, 200, { message: "Attendance updated." });
+  }
+
+  if (request.method === "POST" && pathname === "/api/admin/slots") {
+    const { date, time, capacity, description } = await readJson(request);
+
+    if (!date || !time) {
+      return sendJson(response, 400, { error: "Date and time are required." });
+    }
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{2}:\d{2}$/.test(time)) {
+      return sendJson(response, 400, { error: "Invalid date or time format." });
+    }
+
+    const cap = Number(capacity);
+    if (!Number.isInteger(cap) || cap < 1 || cap > 100) {
+      return sendJson(response, 400, { error: "Capacity must be a whole number between 1 and 100." });
+    }
+
+    try {
+      const label = buildSlotLabel(date, time, description);
+      const result = db
+        .prepare("INSERT INTO slots (label, capacity) VALUES (?, ?)")
+        .run(label, cap);
+
+      return sendJson(response, 201, {
+        slot: {
+          id: result.lastInsertRowid,
+          label,
+          capacity: cap,
+          bookingCount: 0,
+          signupCount: 0,
+          remaining: cap,
+        },
+      });
+    } catch {
+      return sendJson(response, 400, { error: "Could not create slot." });
+    }
+  }
+
+  if (request.method === "DELETE" && pathname.startsWith("/api/admin/slots/")) {
+    const slotId = Number(pathname.split("/").pop());
+
+    const slot = db.prepare("SELECT id FROM slots WHERE id = ?").get(slotId);
+    if (!slot) return sendJson(response, 404, { error: "Slot not found." });
+
+    const count = db
+      .prepare("SELECT COUNT(*) AS count FROM participants WHERE slot_id = ?")
+      .get(slotId).count;
+
+    if (count > 0) {
+      return sendJson(response, 409, {
+        error: "This slot has participant records attached and cannot be deleted.",
+      });
+    }
+
+    db.prepare("DELETE FROM slots WHERE id = ?").run(slotId);
+    return sendJson(response, 200, { message: "Slot deleted." });
   }
 
   return sendJson(response, 404, { error: "API route not found." });

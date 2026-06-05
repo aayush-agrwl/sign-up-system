@@ -136,19 +136,36 @@
         </form>
       </section>
     </main>
-    <!-- Booking success modal -->
+    <!-- Booking confirmation modal -->
     <div id="booking-success-modal" class="modal-overlay" hidden aria-modal="true" role="dialog" aria-labelledby="success-modal-title">
-      <div class="modal-panel" style="text-align: center; padding: 0;">
-        <div style="padding: 36px 36px 28px;">
-          <div style="width:56px;height:56px;border-radius:50%;background:var(--primary-bg);display:flex;align-items:center;justify-content:center;margin:0 auto 20px;">
+      <div class="modal-panel booking-confirmation">
+        <div class="modal-icon">
             <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+        </div>
+        <h2 id="success-modal-title">Your session has been booked.</h2>
+        <p class="modal-copy">Further instructions will be shared over email. We look forward to your participation.</p>
+        <dl class="booking-summary">
+          <div>
+            <dt>Name</dt>
+            <dd id="confirmation-name"></dd>
           </div>
-          <h2 id="success-modal-title" style="margin-bottom:12px;font-size:1.4rem;">Your session has been booked.</h2>
-          <p style="color:var(--muted);line-height:1.7;margin-bottom:0;">
-            Further instructions will be shared over email.<br>
-            We look forward to your participation!<br>
-            You may now leave this page.
-          </p>
+          <div>
+            <dt>Email</dt>
+            <dd id="confirmation-email"></dd>
+          </div>
+          <div>
+            <dt>Phone</dt>
+            <dd id="confirmation-phone"></dd>
+          </div>
+          <div>
+            <dt>Appointment slot</dt>
+            <dd id="confirmation-slot"></dd>
+          </div>
+        </dl>
+        <div id="booking-management-message" class="message" hidden></div>
+        <div class="modal-actions">
+          <button id="cancel-booking-button" class="button secondary" type="button">Cancel Booking</button>
+          <button id="reschedule-booking-button" class="button primary" type="button">Reschedule Booking</button>
         </div>
       </div>
     </div>

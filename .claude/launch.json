@@ -1,0 +1,15 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "booking-app",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["--no-warnings", "server.js"],
+      "port": 3000,
+      "env": {
+        "ADMIN_PASSWORD": "aayush123",
+        "PORT": "3000"
+      }
+    }
+  ]
+}

@@ -651,6 +651,98 @@ select option[value=""] {
   opacity: 1;
 }
 
+/* ── Booking confirmation modal ───────────── */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(31, 18, 53, 0.48);
+}
+
+.modal-overlay[hidden] {
+  display: none;
+}
+
+.modal-panel {
+  width: min(540px, 100%);
+  max-height: min(760px, calc(100vh - 40px));
+  overflow: auto;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 24px 80px rgba(31, 18, 53, 0.28);
+}
+
+.booking-confirmation {
+  padding: 32px;
+  text-align: center;
+}
+
+.modal-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--primary-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 18px;
+}
+
+.booking-confirmation h2 {
+  margin-bottom: 10px;
+  font-size: 1.45rem;
+}
+
+.modal-copy {
+  margin: 0 auto 20px;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.booking-summary {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 20px;
+  text-align: left;
+}
+
+.booking-summary div {
+  display: grid;
+  grid-template-columns: 130px minmax(0, 1fr);
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--soft);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.booking-summary dt {
+  color: var(--muted);
+  font-family: 'Manrope', ui-sans-serif, sans-serif;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.booking-summary dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--ink);
+  line-height: 1.45;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 /* ── Dashboard ───────────────────────────── */
 .dashboard-header {
   display: flex;
@@ -753,7 +845,7 @@ th {
   background: var(--soft);
 }
 
-.participant-deleted td {
+.participant-inactive td {
   opacity: 0.4;
   text-decoration: line-through;
   text-decoration-color: var(--muted);

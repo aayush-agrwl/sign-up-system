@@ -52,10 +52,15 @@ async function ensureSchema(sql) {
 // Data helpers
 // ---------------------------------------------------------------------------
 const visibleResponseKeys = new Set([
-  "institution_name", "employment", "field", "education",
-  "gender", "religion", "state", "live", "caste", "personal_comp",
+  "institution_name", "gender", "personal_comp",
   "future_studies",
 ]);
+
+function sanitizeResponses(responses) {
+  return Object.fromEntries(
+    Object.entries(responses).filter(([key]) => visibleResponseKeys.has(key)),
+  );
+}
 
 async function getSlots(sql, includeFull = false) {
   const rows = await sql`
@@ -63,8 +68,9 @@ async function getSlots(sql, includeFull = false) {
       s.id,
       s.label,
       s.capacity,
-      COUNT(CASE WHEN p.attendance != 'deleted' THEN p.id END)::int AS signup_count,
-      (s.capacity - COUNT(CASE WHEN p.attendance != 'deleted' THEN p.id END)::int) AS remaining
+      COUNT(p.id)::int AS booking_count,
+      COUNT(CASE WHEN p.attendance NOT IN ('cancelled', 'deleted') THEN p.id END)::int AS signup_count,
+      (s.capacity - COUNT(CASE WHEN p.attendance NOT IN ('cancelled', 'deleted') THEN p.id END)::int) AS remaining
     FROM slots s
     LEFT JOIN participants p ON p.slot_id = s.id
     GROUP BY s.id
@@ -75,6 +81,7 @@ async function getSlots(sql, includeFull = false) {
     id:          r.id,
     label:       r.label,
     capacity:    r.capacity,
+    bookingCount: r.booking_count,
     signupCount: r.signup_count,
     remaining:   r.remaining,
   }));
@@ -251,6 +258,8 @@ export default async function handler(req, res) {
       const email     = String(booking.email || "").trim();
       const responses = booking.responses && typeof booking.responses === "object"
         ? booking.responses : {};
+      const sanitizedResponses = sanitizeResponses(responses);
+      const eligibilityIssues = [];
 
       if (!name || !phone || !email || !slotId || !Number.isInteger(age)) {
         return sendJson(res, 400, { error: "Please complete all required fields." });
@@ -258,17 +267,28 @@ export default async function handler(req, res) {
       if (!/^[0-9]{10}$/.test(phone)) {
         return sendJson(res, 400, { error: "Please enter a valid 10-digit mobile number." });
       }
-      if (age < 18 || age > 35 || !enrolled) {
-        return sendJson(res, 403, { error: "This study is only open to enrolled students aged 18–35." });
+      if (age < 18 || age > 35) {
+        eligibilityIssues.push("You must be between 18 and 35 years old.");
       }
-      if (responses?.personal_comp?.value !== "Yes") {
-        return sendJson(res, 403, { error: "This study requires participants to have access to a personal computer, laptop, or tablet." });
+      if (!enrolled) {
+        eligibilityIssues.push("You must currently be enrolled in an educational institution.");
+      }
+      if (sanitizedResponses?.personal_comp?.value !== "Yes") {
+        eligibilityIssues.push("You must have access to a personal computer, laptop, or tablet.");
+      }
+      if (eligibilityIssues.length > 0) {
+        return sendJson(res, 403, {
+          error: eligibilityIssues.length === 1
+            ? eligibilityIssues[0]
+            : `This study is currently limited to participants who meet these requirements: ${eligibilityIssues.join(" ")}`,
+          reasons: eligibilityIssues,
+        });
       }
 
       // Check slot exists and has capacity
       const [slot] = await sql`
-        SELECT s.id, s.capacity,
-          COUNT(CASE WHEN p.attendance != 'deleted' THEN p.id END)::int AS signup_count
+        SELECT s.id, s.label, s.capacity,
+          COUNT(CASE WHEN p.attendance NOT IN ('cancelled', 'deleted') THEN p.id END)::int AS signup_count
         FROM slots s
         LEFT JOIN participants p ON p.slot_id = s.id
         WHERE s.id = ${slotId}
@@ -281,14 +301,67 @@ export default async function handler(req, res) {
         return sendJson(res, 409, { error: "That slot is full. Please choose another time." });
       }
 
+      await sql`
+        UPDATE participants
+        SET attendance = 'cancelled'
+        WHERE attendance NOT IN ('cancelled', 'deleted')
+          AND (lower(email) = lower(${email}) OR phone = ${phone})
+      `;
+
       const [row] = await sql`
         INSERT INTO participants (name, phone, email, age, enrolled, responses_json, slot_id)
-        VALUES (${name}, ${phone}, ${email}, ${age}, ${enrolled}, ${JSON.stringify(responses)}, ${slotId})
+        VALUES (${name}, ${phone}, ${email}, ${age}, ${enrolled}, ${JSON.stringify(sanitizedResponses)}, ${slotId})
         RETURNING id
       `;
-      return sendJson(res, 201, { id: row.id, message: "Your appointment has been booked." });
+      return sendJson(res, 201, {
+        id: row.id,
+        message: "Your appointment has been booked.",
+        booking: {
+          id: row.id,
+          name,
+          phone,
+          email,
+          age,
+          enrolled,
+          responses: sanitizedResponses,
+          slot: slot.label,
+          attendance: "pending",
+        },
+      });
     } catch {
       return sendJson(res, 400, { error: "The booking could not be saved." });
+    }
+  }
+
+  // POST /api/bookings/:id/cancel  (public self-service, verifies contact details)
+  if (req.method === "POST" && pathname.startsWith("/api/bookings/") && pathname.endsWith("/cancel")) {
+    try {
+      const bookingId = Number(pathname.split("/").at(-2));
+      const { email, phone } = await readJson(req);
+      const normalizedEmail = String(email || "").trim();
+      const normalizedPhone = String(phone || "").trim();
+
+      if (!bookingId || !normalizedEmail || !normalizedPhone) {
+        return sendJson(res, 400, { error: "Could not verify this booking." });
+      }
+
+      const rows = await sql`
+        UPDATE participants
+        SET attendance = 'cancelled'
+        WHERE id = ${bookingId}
+          AND lower(email) = lower(${normalizedEmail})
+          AND phone = ${normalizedPhone}
+          AND attendance NOT IN ('cancelled', 'deleted')
+        RETURNING id
+      `;
+
+      if (rows.length === 0) {
+        return sendJson(res, 404, { error: "No active booking was found for those details." });
+      }
+
+      return sendJson(res, 200, { message: "Your booking has been cancelled." });
+    } catch {
+      return sendJson(res, 400, { error: "The booking could not be cancelled." });
     }
   }
 
@@ -318,7 +391,7 @@ export default async function handler(req, res) {
   if (req.method === "PATCH" && pathname.startsWith("/api/attendance/")) {
     const participantId = Number(pathname.split("/").pop());
     const { attendance } = await readJson(req);
-    const allowed = ["pending", "attended", "missed", "deleted"];
+    const allowed = ["pending", "attended", "missed", "cancelled", "deleted"];
 
     if (!participantId || !allowed.includes(attendance)) {
       return sendJson(res, 400, { error: "Invalid attendance update." });
@@ -357,7 +430,7 @@ export default async function handler(req, res) {
       RETURNING id, label, capacity
     `;
     return sendJson(res, 201, {
-      slot: { ...newSlot, signupCount: 0, remaining: cap },
+      slot: { ...newSlot, bookingCount: 0, signupCount: 0, remaining: cap },
     });
   }
 
