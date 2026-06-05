@@ -81,7 +81,7 @@ const questionnaire = [
         name: "future_studies",
         label: "Would you like to be invited to participate in future CSBC studies?",
         type: "select",
-        required: false,
+        required: true,
         choices: ["Yes", "No"],
       },
     ],
