@@ -434,26 +434,31 @@ export default async function handler(req, res) {
     });
   }
 
-  // DELETE /api/admin/slots/:id — remove a slot (blocked if participants exist)
+  // DELETE /api/admin/slots/:id — remove a slot
+  // ?force=true removes all participant records too (for slots with active bookings)
   if (req.method === "DELETE" && pathname.startsWith("/api/admin/slots/")) {
     const slotId = Number(pathname.split("/").pop());
+    const force = new URL(req.url, "http://localhost").searchParams.get("force") === "true";
 
     const [slot] = await sql`SELECT id FROM slots WHERE id = ${slotId}`;
     if (!slot) return sendJson(res, 404, { error: "Slot not found." });
 
-    // Block only if there are active (non-cancelled, non-deleted) participants
+    // Count active (non-cancelled, non-deleted) participants
     const [{ count }] = await sql`
       SELECT COUNT(*)::int AS count FROM participants
       WHERE slot_id = ${slotId}
         AND attendance NOT IN ('cancelled', 'deleted')
     `;
-    if (count > 0) {
+
+    if (count > 0 && !force) {
+      // Tell the client how many active participants exist so it can warn the admin
       return sendJson(res, 409, {
-        error: "This slot has participants booked. Remove their bookings before deleting.",
+        error: "This slot has participants booked.",
+        activeCount: count,
       });
     }
 
-    // Remove any cancelled/deleted participant records first (FK constraint)
+    // Remove all participant records first (FK constraint), then the slot
     await sql`DELETE FROM participants WHERE slot_id = ${slotId}`;
     await sql`DELETE FROM slots WHERE id = ${slotId}`;
     return sendJson(res, 200, { message: "Slot deleted." });

@@ -203,7 +203,7 @@ function renderSlots(slots) {
 
   slots.forEach((slot) => {
     const percentFull = Math.round((slot.signupCount / slot.capacity) * 100);
-    const canDelete = (slot.bookingCount ?? slot.signupCount) === 0;
+    const activeCount = slot.bookingCount ?? slot.signupCount;
     const item = document.createElement("article");
     item.className = "slot-card";
     item.innerHTML = `
@@ -215,8 +215,8 @@ function renderSlots(slots) {
         <button
           class="slot-delete-btn"
           data-slot-id="${slot.id}"
-          title="${canDelete ? "Delete this slot" : "Cannot delete — participants are booked"}"
-          ${canDelete ? "" : "disabled"}
+          data-active-count="${activeCount}"
+          title="Delete this slot"
           aria-label="Delete slot"
         >&times;</button>
       </div>
@@ -228,7 +228,7 @@ function renderSlots(slots) {
   });
 
   slotSummary.querySelectorAll(".slot-delete-btn").forEach((btn) => {
-    btn.addEventListener("click", () => deleteSlot(Number(btn.dataset.slotId)));
+    btn.addEventListener("click", () => deleteSlot(Number(btn.dataset.slotId), Number(btn.dataset.activeCount)));
   });
 }
 
@@ -298,11 +298,24 @@ async function createSlot() {
   }
 }
 
-async function deleteSlot(slotId) {
-  if (!confirm("Delete this slot? This cannot be undone.")) return;
+async function deleteSlot(slotId, activeCount) {
+  let force = false;
+
+  if (activeCount > 0) {
+    const confirmed = confirm(
+      `This slot has ${activeCount} active participant booking${activeCount === 1 ? "" : "s"}.\n\n` +
+      `Force-deleting will permanently remove the slot and all its participant records.\n\n` +
+      `Are you sure you want to continue?`
+    );
+    if (!confirmed) return;
+    force = true;
+  } else {
+    if (!confirm("Delete this slot? This cannot be undone.")) return;
+  }
 
   try {
-    const res = await fetch(`/api/admin/slots/${slotId}`, { method: "DELETE" });
+    const url = `/api/admin/slots/${slotId}${force ? "?force=true" : ""}`;
+    const res = await fetch(url, { method: "DELETE" });
     const data = await res.json();
     if (!res.ok) {
       alert(data.error || "Could not delete slot.");
