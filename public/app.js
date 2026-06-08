@@ -211,12 +211,11 @@ function collectQuestionResponses(formData) {
 // ── Slot calendar ───────────────────────────────────────────────────────────
 
 const HOUR_PX  = 64;  // pixels per hour in the calendar grid
-const SLOT_H   = 60;  // fixed height of each slot block in px
+const SLOT_H   = 58;  // fixed height of each slot block in px
 const DAY_ABB  = ["SUN","MON","TUE","WED","THU","FRI","SAT"];
-const MONTH_MAP = {
-  January:0, February:1, March:2, April:3, May:4, June:5,
-  July:6, August:7, September:8, October:9, November:10, December:11,
-};
+const MONTH_NAMES = ["January","February","March","April","May","June",
+  "July","August","September","October","November","December"];
+const MONTH_MAP = Object.fromEntries(MONTH_NAMES.map((m, i) => [m, i]));
 
 /** Parse the label built by buildSlotLabel() → Date, or null on failure. */
 function parseSlotDt(label) {
@@ -234,6 +233,41 @@ function parseSlotDt(label) {
   // bump to next year if the date is clearly in the past
   if (cand < now && now - cand > 86_400_000) yr++;
   return new Date(yr, mIdx, Number(dayStr), h, Number(minStr));
+}
+
+/** Midnight on the Monday of the week containing `date`. */
+function mondayOf(date) {
+  const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const dow = d.getDay();                 // 0 = Sun … 6 = Sat
+  d.setDate(d.getDate() + (dow === 0 ? -6 : 1 - dow));
+  return d;
+}
+
+/** Assign overlapping slots (within one day) to side-by-side lanes so they
+ *  never render on top of each other. Mutates each slot with .lane/.lanes. */
+function assignLanes(daySlots) {
+  const sorted = [...daySlots].sort((a, b) => a.top - b.top);
+  const laneEnds = [];                     // bottom-y of the last block in each lane
+  sorted.forEach(s => {
+    let lane = laneEnds.findIndex(end => s.top >= end);
+    if (lane === -1) { lane = laneEnds.length; laneEnds.push(0); }
+    s.lane = lane;
+    laneEnds[lane] = s.top + SLOT_H;
+  });
+  const lanes = laneEnds.length || 1;
+  sorted.forEach(s => { s.lanes = lanes; });
+  return sorted;
+}
+
+/** Human month/year caption for a Mon–Sun week. */
+function weekTitle(monday, sunday) {
+  const sameYear  = monday.getFullYear() === sunday.getFullYear();
+  const sameMonth = monday.getMonth() === sunday.getMonth() && sameYear;
+  if (sameMonth) return `${MONTH_NAMES[monday.getMonth()]} ${monday.getFullYear()}`;
+  if (sameYear) {
+    return `${MONTH_NAMES[monday.getMonth()]} – ${MONTH_NAMES[sunday.getMonth()]} ${monday.getFullYear()}`;
+  }
+  return `${MONTH_NAMES[monday.getMonth()]} ${monday.getFullYear()} – ${MONTH_NAMES[sunday.getMonth()]} ${sunday.getFullYear()}`;
 }
 
 /** Calendar-view slot picker (primary). */
@@ -254,74 +288,97 @@ function renderSlots(slots) {
   if (!withDt.every(s => s.dt)) { renderSlotList(slots); return; }
 
   withDt.sort((a, b) => a.dt - b.dt);
-
-  // Group by calendar day
-  const dayMap = new Map();
-  withDt.forEach(s => {
-    const key = s.dt.toDateString();
-    if (!dayMap.has(key)) dayMap.set(key, { dt: s.dt, slots: [] });
-    dayMap.get(key).slots.push(s);
-  });
-  const days    = [...dayMap.values()];
-  const numDays = days.length;
   const todayStr = new Date().toDateString();
 
-  // Hour range: earliest slot − 1 h  →  latest slot + 2 h
+  // Shared hour range across all weeks: earliest slot − 1 h → latest slot + 2 h
   const hrs       = withDt.map(s => s.dt.getHours());
   const startHour = Math.max(0,  Math.min(...hrs) - 1);
-  const endHour   = Math.min(23, Math.max(...hrs) + 2);
+  const endHour   = Math.min(24, Math.max(...hrs) + 2);
   const numHours  = endHour - startHour;
   const gridH     = numHours * HOUR_PX;
 
-  // ── Header ──────────────────────────────────────────────────────
-  let hdr = `<div class="cal-ghdr"></div>`;
-  days.forEach(({ dt }) => {
-    const isToday = dt.toDateString() === todayStr;
-    hdr += `
-      <div class="cal-dhdr${isToday ? " is-today" : ""}">
-        <span class="cal-dname">${DAY_ABB[dt.getDay()]}</span>
-        <span class="cal-dnum${isToday ? " today-pill" : ""}">${dt.getDate()}</span>
-      </div>`;
+  // Group slots into Monday-aligned weeks (only weeks that contain slots)
+  const weekMap = new Map();
+  withDt.forEach(s => {
+    const monday = mondayOf(s.dt);
+    const key = monday.toDateString();
+    if (!weekMap.has(key)) weekMap.set(key, { monday, slots: [] });
+    weekMap.get(key).slots.push(s);
   });
+  const weeks = [...weekMap.values()].sort((a, b) => a.monday - b.monday);
 
-  // ── Time gutter ──────────────────────────────────────────────────
+  // Shared time gutter (same for every week)
   let gutter = "";
   for (let h = startHour; h < endHour; h++) {
-    const lbl = h === 0 ? "12 AM" : h < 12 ? `${h} AM` : h === 12 ? "12 PM" : `${h - 12} PM`;
+    const lbl = h === 0 ? "12 AM" : h < 12 ? `${h} AM` : h === 12 ? "12 PM" : h === 24 ? "12 AM" : `${h - 12} PM`;
     gutter += `<div class="cal-hlbl" style="height:${HOUR_PX}px">${lbl}</div>`;
   }
 
-  // ── Day columns ──────────────────────────────────────────────────
-  let cols = "";
-  days.forEach(({ slots: ds }) => {
-    let inner = "";
-    for (let h = 0; h < numHours; h++) {
-      inner += `<div class="cal-hline" style="top:${h * HOUR_PX}px"></div>`;
-    }
-    ds.forEach(slot => {
-      const top    = ((slot.dt.getHours() - startHour) + slot.dt.getMinutes() / 60) * HOUR_PX;
-      const filled = slot.capacity - slot.remaining;
-      const timeStr = slot.label.match(/at (.+?)( ·|$)/)?.[1] ?? "";
-      const dots   = Array.from({ length: slot.capacity }, (_, i) =>
-        `<span class="cal-dot${i < filled ? " on" : ""}"></span>`
-      ).join("");
-      inner += `
-        <label class="cal-slot" style="top:${top}px;height:${SLOT_H}px" title="${escapeHtml(slot.label)}">
-          <input type="radio" name="slotId" value="${slot.id}" required>
-          <span class="cal-st">${escapeHtml(timeStr)}</span>
-          <span class="cal-ss">${slot.remaining} of ${slot.capacity} open</span>
-          <span class="cal-dots">${dots}</span>
-        </label>`;
+  let html = "";
+  weeks.forEach(({ monday, slots: weekSlots }) => {
+    // Build the 7 days Mon → Sun, attaching each day's slots
+    const days = Array.from({ length: 7 }, (_, i) => {
+      const dt = new Date(monday);
+      dt.setDate(dt.getDate() + i);
+      const dayStr = dt.toDateString();
+      return { dt, slots: weekSlots.filter(s => s.dt.toDateString() === dayStr) };
     });
-    cols += `<div class="cal-dcol" style="height:${gridH}px">${inner}</div>`;
+    const sunday = days[6].dt;
+
+    // ── Header row ──
+    let hdr = `<div class="cal-ghdr"></div>`;
+    days.forEach(({ dt }) => {
+      const isToday = dt.toDateString() === todayStr;
+      hdr += `
+        <div class="cal-dhdr${isToday ? " is-today" : ""}">
+          <span class="cal-dname">${DAY_ABB[dt.getDay()]}</span>
+          <span class="cal-dnum${isToday ? " today-pill" : ""}">${dt.getDate()}</span>
+        </div>`;
+    });
+
+    // ── Day columns ──
+    let cols = "";
+    days.forEach(({ slots: ds }) => {
+      let inner = "";
+      for (let h = 0; h < numHours; h++) {
+        inner += `<div class="cal-hline" style="top:${h * HOUR_PX}px"></div>`;
+      }
+      // compute vertical position, then lay overlapping slots side-by-side
+      ds.forEach(slot => {
+        slot.top = ((slot.dt.getHours() - startHour) + slot.dt.getMinutes() / 60) * HOUR_PX;
+      });
+      assignLanes(ds).forEach(slot => {
+        const filled  = slot.capacity - slot.remaining;
+        const timeStr = slot.label.match(/at (.+?)( ·|$)/)?.[1] ?? "";
+        const dots    = Array.from({ length: slot.capacity }, (_, i) =>
+          `<span class="cal-dot${i < filled ? " on" : ""}"></span>`
+        ).join("");
+        const widthExpr = `calc((100% - 10px) / ${slot.lanes}${slot.lanes > 1 ? " - 3px" : ""})`;
+        const leftExpr  = `calc(5px + (100% - 10px) * ${slot.lane} / ${slot.lanes})`;
+        const full      = slot.remaining <= 0;
+        inner += `
+          <label class="cal-slot${full ? " is-full" : ""}" style="top:${slot.top}px;height:${SLOT_H}px;left:${leftExpr};width:${widthExpr}" title="${escapeHtml(slot.label)}">
+            <input type="radio" name="slotId" value="${slot.id}" required${full ? " disabled" : ""}>
+            <span class="cal-st">${escapeHtml(timeStr)}</span>
+            <span class="cal-ss">${full ? "Full" : `${slot.remaining} of ${slot.capacity} open`}</span>
+            <span class="cal-dots">${dots}</span>
+          </label>`;
+      });
+      cols += `<div class="cal-dcol" style="height:${gridH}px">${inner}</div>`;
+    });
+
+    html += `
+      <div class="cal-week">
+        <div class="cal-week-title">${weekTitle(monday, sunday)}</div>
+        <div class="slot-cal" style="--nd:7">
+          ${hdr}
+          <div class="cal-gutter">${gutter}</div>
+          ${cols}
+        </div>
+      </div>`;
   });
 
-  slotsList.innerHTML = `
-    <div class="slot-cal" style="--nd:${numDays}">
-      ${hdr}
-      <div class="cal-gutter">${gutter}</div>
-      ${cols}
-    </div>`;
+  slotsList.innerHTML = html;
 
   // Keep .selected class in sync for browsers without :has() support
   slotsList.querySelectorAll(".cal-slot input[type='radio']").forEach(inp => {

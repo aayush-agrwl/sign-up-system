@@ -1075,16 +1075,28 @@ mark.hi {
 }
 
 /* ── Slot Calendar ───────────────────────── */
+.cal-week {
+  margin: 16px 0 24px;
+}
+
+.cal-week-title {
+  font-family: 'Manrope', ui-sans-serif, sans-serif;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--primary);
+  margin: 0 0 8px 2px;
+  letter-spacing: 0.01em;
+}
+
 .slot-cal {
   display: grid;
   /* col 1 = time gutter (44px), remaining cols = day columns */
-  grid-template-columns: 44px repeat(var(--nd), minmax(108px, 1fr));
+  grid-template-columns: 44px repeat(var(--nd), minmax(96px, 1fr));
   border: 1px solid var(--line);
   border-radius: 10px;
   background: #ffffff;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
-  margin: 16px 0 24px;
   font-size: 0.82rem;
 }
 
@@ -1178,11 +1190,9 @@ mark.hi {
   pointer-events: none;
 }
 
-/* Slot event blocks */
+/* Slot event blocks (left / width set inline for overlap lanes) */
 .cal-slot {
   position: absolute;
-  left: 5px;
-  right: 5px;
   border-radius: 7px;
   overflow: hidden;
   cursor: pointer;
@@ -1195,6 +1205,20 @@ mark.hi {
   gap: 2px;
   transition: background 0.13s, box-shadow 0.13s, border-color 0.13s;
   user-select: none;
+}
+
+/* Full slots — visible but not selectable */
+.cal-slot.is-full {
+  cursor: not-allowed;
+  background: var(--soft);
+  border-color: var(--line);
+  border-style: dashed;
+}
+
+.cal-slot.is-full .cal-st { color: var(--muted); }
+.cal-slot.is-full:hover {
+  background: var(--soft);
+  box-shadow: none;
 }
 
 .cal-slot input[type="radio"] {
