@@ -211,7 +211,8 @@ function collectQuestionResponses(formData) {
 // ── Slot calendar ───────────────────────────────────────────────────────────
 
 const HOUR_PX  = 64;  // pixels per hour in the calendar grid
-const SLOT_H   = 58;  // fixed height of each slot block in px
+const SLOT_H   = 46;  // fixed height of each slot block in px (< a 45-min gap,
+                      // so back-to-back slots stay full-width instead of splitting)
 const DAY_ABB  = ["SUN","MON","TUE","WED","THU","FRI","SAT"];
 const MONTH_NAMES = ["January","February","March","April","May","June",
   "July","August","September","October","November","December"];
