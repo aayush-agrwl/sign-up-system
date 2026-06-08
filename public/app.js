@@ -208,32 +208,149 @@ function collectQuestionResponses(formData) {
   return responses;
 }
 
-function buildCapacityDots(remaining, capacity) {
-  const filled = capacity - remaining;
-  return Array.from({ length: capacity }, (_, i) =>
-    `<span class="capacity-dot${i < filled ? " filled" : ""}"></span>`
-  ).join("");
+// ── Slot calendar ───────────────────────────────────────────────────────────
+
+const HOUR_PX  = 64;  // pixels per hour in the calendar grid
+const SLOT_H   = 60;  // fixed height of each slot block in px
+const DAY_ABB  = ["SUN","MON","TUE","WED","THU","FRI","SAT"];
+const MONTH_MAP = {
+  January:0, February:1, March:2, April:3, May:4, June:5,
+  July:6, August:7, September:8, October:9, November:10, December:11,
+};
+
+/** Parse the label built by buildSlotLabel() → Date, or null on failure. */
+function parseSlotDt(label) {
+  const m = label.match(/\w+, (\w+) (\d+) at (\d+):(\d+) (AM|PM)/);
+  if (!m) return null;
+  const [, mName, dayStr, hStr, minStr, ampm] = m;
+  let h = Number(hStr);
+  if (ampm === "PM" && h !== 12) h += 12;
+  if (ampm === "AM" && h === 12) h = 0;
+  const mIdx = MONTH_MAP[mName];
+  if (mIdx === undefined) return null;
+  const now  = new Date();
+  let   yr   = now.getFullYear();
+  const cand = new Date(yr, mIdx, Number(dayStr));
+  // bump to next year if the date is clearly in the past
+  if (cand < now && now - cand > 86_400_000) yr++;
+  return new Date(yr, mIdx, Number(dayStr), h, Number(minStr));
 }
 
+/** Calendar-view slot picker (primary). */
 function renderSlots(slots) {
   slotsList.innerHTML = "";
+  const submitBtn = bookingForm.querySelector("button[type='submit']");
 
   if (slots.length === 0) {
     slotsList.innerHTML = `<p class="empty-state">No appointment slots are currently available. Please check back later.</p>`;
     bookingForm.hidden = false;
-    bookingForm.querySelector("button[type='submit']").disabled = true;
+    submitBtn.disabled = true;
     return;
   }
+  submitBtn.disabled = false;
 
-  bookingForm.querySelector("button[type='submit']").disabled = false;
+  // Parse datetimes; fall back to list if any label can't be parsed
+  const withDt = slots.map(s => ({ ...s, dt: parseSlotDt(s.label) }));
+  if (!withDt.every(s => s.dt)) { renderSlotList(slots); return; }
+
+  withDt.sort((a, b) => a.dt - b.dt);
+
+  // Group by calendar day
+  const dayMap = new Map();
+  withDt.forEach(s => {
+    const key = s.dt.toDateString();
+    if (!dayMap.has(key)) dayMap.set(key, { dt: s.dt, slots: [] });
+    dayMap.get(key).slots.push(s);
+  });
+  const days    = [...dayMap.values()];
+  const numDays = days.length;
+  const todayStr = new Date().toDateString();
+
+  // Hour range: earliest slot − 1 h  →  latest slot + 2 h
+  const hrs       = withDt.map(s => s.dt.getHours());
+  const startHour = Math.max(0,  Math.min(...hrs) - 1);
+  const endHour   = Math.min(23, Math.max(...hrs) + 2);
+  const numHours  = endHour - startHour;
+  const gridH     = numHours * HOUR_PX;
+
+  // ── Header ──────────────────────────────────────────────────────
+  let hdr = `<div class="cal-ghdr"></div>`;
+  days.forEach(({ dt }) => {
+    const isToday = dt.toDateString() === todayStr;
+    hdr += `
+      <div class="cal-dhdr${isToday ? " is-today" : ""}">
+        <span class="cal-dname">${DAY_ABB[dt.getDay()]}</span>
+        <span class="cal-dnum${isToday ? " today-pill" : ""}">${dt.getDate()}</span>
+      </div>`;
+  });
+
+  // ── Time gutter ──────────────────────────────────────────────────
+  let gutter = "";
+  for (let h = startHour; h < endHour; h++) {
+    const lbl = h === 0 ? "12 AM" : h < 12 ? `${h} AM` : h === 12 ? "12 PM" : `${h - 12} PM`;
+    gutter += `<div class="cal-hlbl" style="height:${HOUR_PX}px">${lbl}</div>`;
+  }
+
+  // ── Day columns ──────────────────────────────────────────────────
+  let cols = "";
+  days.forEach(({ slots: ds }) => {
+    let inner = "";
+    for (let h = 0; h < numHours; h++) {
+      inner += `<div class="cal-hline" style="top:${h * HOUR_PX}px"></div>`;
+    }
+    ds.forEach(slot => {
+      const top    = ((slot.dt.getHours() - startHour) + slot.dt.getMinutes() / 60) * HOUR_PX;
+      const filled = slot.capacity - slot.remaining;
+      const timeStr = slot.label.match(/at (.+?)( ·|$)/)?.[1] ?? "";
+      const dots   = Array.from({ length: slot.capacity }, (_, i) =>
+        `<span class="cal-dot${i < filled ? " on" : ""}"></span>`
+      ).join("");
+      inner += `
+        <label class="cal-slot" style="top:${top}px;height:${SLOT_H}px" title="${escapeHtml(slot.label)}">
+          <input type="radio" name="slotId" value="${slot.id}" required>
+          <span class="cal-st">${escapeHtml(timeStr)}</span>
+          <span class="cal-ss">${slot.remaining} of ${slot.capacity} open</span>
+          <span class="cal-dots">${dots}</span>
+        </label>`;
+    });
+    cols += `<div class="cal-dcol" style="height:${gridH}px">${inner}</div>`;
+  });
+
+  slotsList.innerHTML = `
+    <div class="slot-cal" style="--nd:${numDays}">
+      ${hdr}
+      <div class="cal-gutter">${gutter}</div>
+      ${cols}
+    </div>`;
+
+  // Keep .selected class in sync for browsers without :has() support
+  slotsList.querySelectorAll(".cal-slot input[type='radio']").forEach(inp => {
+    inp.addEventListener("change", () => {
+      slotsList.querySelectorAll(".cal-slot").forEach(b => b.classList.remove("selected"));
+      inp.closest(".cal-slot").classList.add("selected");
+    });
+  });
+
+  bookingForm.hidden = false;
+  bookingForm.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+/** Fallback list-view (used if any slot label can't be parsed as a date). */
+function renderSlotList(slots) {
+  function buildCapacityDots(remaining, capacity) {
+    const filled = capacity - remaining;
+    return Array.from({ length: capacity }, (_, i) =>
+      `<span class="capacity-dot${i < filled ? " filled" : ""}"></span>`
+    ).join("");
+  }
 
   slots.forEach((slot) => {
     const label = document.createElement("label");
     label.className = "slot-option";
     label.innerHTML = `
       <input type="radio" name="slotId" value="${slot.id}" required>
-        <span class="slot-indicator">${checkSVG}</span>
-        <span class="slot-info">
+      <span class="slot-indicator">${checkSVG}</span>
+      <span class="slot-info">
         <strong>${escapeHtml(slot.label)}</strong>
         <span class="slot-meta">
           ${calendarSVG}
