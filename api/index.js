@@ -441,8 +441,11 @@ export default async function handler(req, res) {
     const [slot] = await sql`SELECT id FROM slots WHERE id = ${slotId}`;
     if (!slot) return sendJson(res, 404, { error: "Slot not found." });
 
+    // Block only if there are active (non-cancelled, non-deleted) participants
     const [{ count }] = await sql`
-      SELECT COUNT(*)::int AS count FROM participants WHERE slot_id = ${slotId}
+      SELECT COUNT(*)::int AS count FROM participants
+      WHERE slot_id = ${slotId}
+        AND attendance NOT IN ('cancelled', 'deleted')
     `;
     if (count > 0) {
       return sendJson(res, 409, {
@@ -450,6 +453,8 @@ export default async function handler(req, res) {
       });
     }
 
+    // Remove any cancelled/deleted participant records first (FK constraint)
+    await sql`DELETE FROM participants WHERE slot_id = ${slotId}`;
     await sql`DELETE FROM slots WHERE id = ${slotId}`;
     return sendJson(res, 200, { message: "Slot deleted." });
   }
