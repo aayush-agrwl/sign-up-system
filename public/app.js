@@ -11,6 +11,16 @@ const confirmationSlot = document.querySelector("#confirmation-slot");
 const managementMessage = document.querySelector("#booking-management-message");
 const cancelBookingButton = document.querySelector("#cancel-booking-button");
 const rescheduleBookingButton = document.querySelector("#reschedule-booking-button");
+const successModalTitle = document.querySelector("#success-modal-title");
+const successModalCopy = document.querySelector("#success-modal-copy");
+
+// Modify-booking lookup
+const manageBookingLink = document.querySelector("#manage-booking-link");
+const manageBookingBtn = document.querySelector("#manage-booking-btn");
+const manageBookingModal = document.querySelector("#manage-booking-modal");
+const manageCloseButton = document.querySelector("#manage-close-button");
+const manageLookupForm = document.querySelector("#manage-lookup-form");
+const manageLookupMessage = document.querySelector("#manage-lookup-message");
 
 const questionnaire = [
   {
@@ -450,12 +460,21 @@ async function loadAndShowSlots(messageText = "Please choose a session slot belo
   renderSlots(slots);
 }
 
-function showBookingConfirmation(booking) {
+function showBookingConfirmation(booking, { isNew = true } = {}) {
   activeBooking = booking;
   confirmationName.textContent = booking.name;
   confirmationEmail.textContent = booking.email;
   confirmationPhone.textContent = booking.phone;
   confirmationSlot.textContent = booking.slot;
+
+  if (isNew) {
+    successModalTitle.textContent = "Your session has been booked.";
+    successModalCopy.textContent = "Further instructions will be shared over email. We look forward to your participation.";
+  } else {
+    successModalTitle.textContent = "Your booking";
+    successModalCopy.textContent = "Here are your current session details. You can reschedule or cancel below.";
+  }
+
   managementMessage.hidden = true;
   cancelBookingButton.disabled = false;
   rescheduleBookingButton.disabled = false;
@@ -618,6 +637,74 @@ rescheduleBookingButton.addEventListener("click", async () => {
     await loadAndShowSlots("Your previous booking was cancelled. Please choose a new session slot.");
   } catch {
     showMessage("Your previous booking was cancelled, but available slots could not be loaded. Please try again.", "warning");
+  }
+});
+
+// ── Modify-booking lookup ────────────────────────────────────────────────────
+function openManageModal() {
+  manageLookupForm.reset();
+  manageLookupMessage.hidden = true;
+  manageBookingModal.hidden = false;
+  manageLookupForm.querySelector("input[name='contact']").focus();
+}
+
+function closeManageModal() {
+  manageBookingModal.hidden = true;
+}
+
+function showLookupMessage(text, type = "warning") {
+  manageLookupMessage.textContent = text;
+  manageLookupMessage.className = `message ${type}`;
+  manageLookupMessage.hidden = false;
+}
+
+manageBookingLink.addEventListener("click", (event) => {
+  event.preventDefault();
+  openManageModal();
+});
+
+manageBookingBtn.addEventListener("click", openManageModal);
+manageCloseButton.addEventListener("click", closeManageModal);
+
+// Close on backdrop click
+manageBookingModal.addEventListener("click", (event) => {
+  if (event.target === manageBookingModal) closeManageModal();
+});
+
+manageLookupForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  manageLookupMessage.hidden = true;
+
+  const contact = new FormData(manageLookupForm).get("contact").trim();
+  if (!contact) {
+    showLookupMessage("Please enter the email or phone number you booked with.");
+    return;
+  }
+
+  const submitBtn = manageLookupForm.querySelector("button[type='submit']");
+  setButtonLoading(submitBtn, true);
+
+  try {
+    const response = await fetch("/api/bookings/lookup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ contact }),
+    });
+    const result = await response.json();
+    setButtonLoading(submitBtn, false);
+
+    if (!response.ok) {
+      showLookupMessage(result.error || "We couldn't find an active booking for those details.");
+      return;
+    }
+
+    // Hand the found booking to the existing confirmation modal (Cancel / Reschedule)
+    currentParticipant = null;
+    closeManageModal();
+    showBookingConfirmation(result.booking, { isNew: false });
+  } catch {
+    setButtonLoading(submitBtn, false);
+    showLookupMessage("Something went wrong. Please try again.");
   }
 });
 

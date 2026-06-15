@@ -362,6 +362,54 @@ async function handleApi(request, response, pathname) {
     }
   }
 
+  if (request.method === "POST" && pathname === "/api/bookings/lookup") {
+    try {
+      const { contact } = await readJson(request);
+      const c = String(contact || "").trim();
+      if (!c) {
+        return sendJson(response, 400, { error: "Please enter the email or phone number you booked with." });
+      }
+
+      const row = db
+        .prepare(`
+          SELECT p.id, p.name, p.phone, p.email, p.age, p.enrolled, p.responses_json,
+                 s.label AS slot
+          FROM participants p
+          JOIN slots s ON s.id = p.slot_id
+          WHERE p.attendance NOT IN ('cancelled', 'deleted')
+            AND (lower(p.email) = lower(?) OR p.phone = ?)
+          ORDER BY p.created_at DESC
+          LIMIT 1
+        `)
+        .get(c, c);
+
+      if (!row) {
+        return sendJson(response, 404, {
+          error: "We couldn't find an active booking for those details. Please check and try again.",
+        });
+      }
+
+      let responses = {};
+      try { responses = JSON.parse(row.responses_json || "{}"); } catch {}
+
+      return sendJson(response, 200, {
+        booking: {
+          id:         row.id,
+          name:       row.name,
+          phone:      row.phone,
+          email:      row.email,
+          age:        row.age,
+          enrolled:   Boolean(row.enrolled),
+          responses,
+          slot:       row.slot,
+          attendance: "pending",
+        },
+      });
+    } catch {
+      return sendJson(response, 400, { error: "Could not look up your booking. Please try again." });
+    }
+  }
+
   if (request.method === "POST" && pathname.startsWith("/api/bookings/") && pathname.endsWith("/cancel")) {
     try {
       const participantId = Number(pathname.split("/").at(-2));

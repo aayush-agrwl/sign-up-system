@@ -27,6 +27,7 @@
       <nav aria-label="Main navigation">
         <a href="#study">About the study</a>
         <a href="#screening">Sign up</a>
+        <a href="#" id="manage-booking-link">Modify booking</a>
       </nav>
     </header>
 
@@ -37,7 +38,10 @@
           <p class="hero-copy">
             CSBC is recruiting participants for an ongoing study on decision-making and behaviour. Check your eligibility, pick a session time that works for you, and confirm your spot in minutes!
           </p>
-          <a class="button primary" href="#screening">Check eligibility</a>
+          <div class="hero-actions">
+            <a class="button primary" href="#screening">Check eligibility</a>
+            <button class="button secondary" type="button" id="manage-booking-btn">Modify an existing booking</button>
+          </div>
         </div>
       </section>
 
@@ -143,7 +147,7 @@
             <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
         </div>
         <h2 id="success-modal-title">Your session has been booked.</h2>
-        <p class="modal-copy">Further instructions will be shared over email. We look forward to your participation.</p>
+        <p class="modal-copy" id="success-modal-copy">Further instructions will be shared over email. We look forward to your participation.</p>
         <dl class="booking-summary">
           <div>
             <dt>Name</dt>
@@ -167,6 +171,22 @@
           <button id="cancel-booking-button" class="button secondary" type="button">Cancel Booking</button>
           <button id="reschedule-booking-button" class="button primary" type="button">Reschedule Booking</button>
         </div>
+      </div>
+    </div>
+    <!-- Modify-booking lookup modal -->
+    <div id="manage-booking-modal" class="modal-overlay" hidden aria-modal="true" role="dialog" aria-labelledby="manage-modal-title">
+      <div class="modal-panel manage-lookup">
+        <button class="modal-close" type="button" id="manage-close-button" aria-label="Close">&times;</button>
+        <h2 id="manage-modal-title">Modify your booking</h2>
+        <p class="modal-copy">Enter the email address or phone number you used to book, and we&rsquo;ll pull up your session so you can reschedule or cancel it.</p>
+        <form id="manage-lookup-form">
+          <label>
+            Email or phone number
+            <input name="contact" type="text" autocomplete="off" required placeholder="you@example.edu or 9876543210">
+          </label>
+          <div id="manage-lookup-message" class="message" hidden></div>
+          <button class="button primary" type="submit" style="width:100%;margin-top:16px;">Find my booking</button>
+        </form>
       </div>
     </div>
   </body>
